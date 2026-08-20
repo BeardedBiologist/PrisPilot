@@ -15,4 +15,4 @@ DerivedData/
 .LSOverride
 
 # API Keys — never commit this file
-APIKeys.swift
+**/APIKeys.swift
