@@ -191,4 +191,12 @@ struct ActivityTag: Identifiable {
         self.timestamp = Date()
         self.affectedRecordIDs = action.resultingRecordIDs
     }
+
+    init(id: UUID, actionType: ProposedActionType, summary: String, timestamp: Date, affectedRecordIDs: [UUID]) {
+        self.id = id
+        self.actionType = actionType
+        self.summary = summary
+        self.timestamp = timestamp
+        self.affectedRecordIDs = affectedRecordIDs
+    }
 }

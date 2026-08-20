@@ -73,10 +73,38 @@ struct ChatSessionSnapshot: Codable {
     }
 }
 
+struct ActivityTagSnapshot: Codable {
+    var id: UUID
+    var actionType: String
+    var summary: String
+    var timestamp: Date
+    var affectedRecordIDs: [UUID]
+
+    init(tag: ActivityTag) {
+        id = tag.id
+        actionType = tag.actionType.rawValue
+        summary = tag.summary
+        timestamp = tag.timestamp
+        affectedRecordIDs = tag.affectedRecordIDs
+    }
+
+    var activityTag: ActivityTag? {
+        guard let resolvedActionType = ProposedActionType(rawValue: actionType) else { return nil }
+        return ActivityTag(
+            id: id,
+            actionType: resolvedActionType,
+            summary: summary,
+            timestamp: timestamp,
+            affectedRecordIDs: affectedRecordIDs
+        )
+    }
+}
+
 struct ChatMessageSnapshot: Codable {
     enum Content: Codable {
         case text(String)
         case error(String)
+        case activityTags([ActivityTagSnapshot])
         case onboardingComplete
     }
 
@@ -96,9 +124,11 @@ struct ChatMessageSnapshot: Codable {
             content = .text(text)
         case .error(let error):
             content = .error(error.localizedDescription)
+        case .activityTags(let tags):
+            content = .activityTags(tags.map(ActivityTagSnapshot.init(tag:)))
         case .onboardingComplete:
             content = .onboardingComplete
-        case .proposedActions, .activityTags:
+        case .proposedActions:
             return nil
         }
     }
@@ -111,6 +141,8 @@ struct ChatMessageSnapshot: Codable {
             resolvedContent = .text(text)
         case .error(let message):
             resolvedContent = .error(.unknown(message))
+        case .activityTags(let tags):
+            resolvedContent = .activityTags(tags.compactMap(\.activityTag))
         case .onboardingComplete:
             resolvedContent = .onboardingComplete
         }
