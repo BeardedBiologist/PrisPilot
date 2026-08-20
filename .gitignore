@@ -1,0 +1,18 @@
+# Xcode
+*.xcuserstate
+xcuserdata/
+*.xcbkptlist
+*.moved-aside
+DerivedData/
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# API Keys — never commit this file
+PrisPilot/APIKeys.swift
