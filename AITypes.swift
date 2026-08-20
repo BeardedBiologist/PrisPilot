@@ -13,6 +13,15 @@ protocol AIService {
     var providerName: String { get }
 }
 
+protocol OnboardingAIService {
+    func sendOnboardingTurn(
+        question: OnboardingQuestion,
+        userAnswer: String,
+        knownAnswers: [OnboardingQuestionID: String],
+        context: AIContext
+    ) async throws -> OnboardingAIResult
+}
+
 // MARK: - AI Message
 
 struct AIMessage: Codable {
@@ -69,6 +78,24 @@ struct AIResponse {
     let error: AIServiceError?
 }
 
+struct OnboardingAIResult {
+    let assistantText: String
+    let shouldAdvance: Bool
+    let normalizedAnswer: String?
+    let proposedActions: [ProposedAction]
+    let memoryProposals: [MemoryProposal]
+
+    static func followUp(_ text: String) -> OnboardingAIResult {
+        OnboardingAIResult(
+            assistantText: text,
+            shouldAdvance: false,
+            normalizedAnswer: nil,
+            proposedActions: [],
+            memoryProposals: []
+        )
+    }
+}
+
 // MARK: - Memory Proposal
 
 struct MemoryProposal: Identifiable {
@@ -91,6 +118,7 @@ enum AIServiceError: Error, LocalizedError {
     case invalidAPIKey
     case invalidResponse
     case permissionDenied
+    case modelOverloaded
     case modelUnavailable(String)
     case unknown(String)
 
@@ -106,6 +134,8 @@ enum AIServiceError: Error, LocalizedError {
             return "The AI returned an unexpected response."
         case .permissionDenied:
             return "This action requires your approval."
+        case .modelOverloaded:
+            return "The AI model is temporarily busy after trying the available Gemini models. Please try again in a moment."
         case .modelUnavailable(let model):
             return "The configured AI model is no longer available: \(model). Please update the Gemini model setting."
         case .unknown(let msg):

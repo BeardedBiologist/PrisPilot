@@ -74,7 +74,7 @@ struct ChatView: View {
         .background(.thinMaterial)
         .overlay(alignment: .bottom) {
             Rectangle()
-                .fill(Color.black.opacity(0.06))
+                .fill(Color.primary.opacity(0.08))
                 .frame(height: 0.5)
         }
     }
@@ -91,7 +91,8 @@ struct ChatView: View {
                             onApproveAll: { viewModel.approveAll(in: message.id) },
                             onApprove: { id in viewModel.approve(actionID: id, in: message.id) },
                             onReject: { id in viewModel.reject(actionID: id, in: message.id) },
-                            onRejectAll: { viewModel.rejectAll(in: message.id) }
+                            onRejectAll: { viewModel.rejectAll(in: message.id) },
+                            onStartNewChat: { viewModel.startNewChat() }
                         )
                         .id(message.id)
                     }
@@ -116,7 +117,9 @@ struct ChatView: View {
     }
 
     private var shouldShowSuggestions: Bool {
-        viewModel.messages.filter { $0.role == .user }.isEmpty && !viewModel.isTyping
+        guard let sessionID = store.selectedChatSessionID,
+              store.purpose(for: sessionID) == .general else { return false }
+        return viewModel.messages.filter { $0.role == .user }.isEmpty && !viewModel.isTyping
     }
 
     private func scrollToBottom(proxy: ScrollViewProxy) {
@@ -147,10 +150,10 @@ struct ChatView: View {
                     .focused($inputFocused)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 12)
-                    .background(Color(.systemBackground), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                    .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
                     .overlay {
                         RoundedRectangle(cornerRadius: 20, style: .continuous)
-                            .stroke(Color.black.opacity(0.08), lineWidth: 1)
+                            .stroke(Color.primary.opacity(0.08), lineWidth: 1)
                     }
 
                 Button {
@@ -174,7 +177,7 @@ struct ChatView: View {
         .background(.regularMaterial)
         .overlay(alignment: .top) {
             Rectangle()
-                .fill(Color.black.opacity(0.06))
+                .fill(Color.primary.opacity(0.08))
                 .frame(height: 0.5)
         }
     }
@@ -187,17 +190,31 @@ struct ChatView: View {
 // MARK: - Chat Surface
 
 struct ChatSurfaceBackground: View {
+    @Environment(\.colorScheme) private var colorScheme
+
     var body: some View {
         LinearGradient(
-            colors: [
-                Color(.systemBackground),
-                Color(red: 0.96, green: 0.98, blue: 0.98),
-                Color(red: 0.98, green: 0.97, blue: 0.94)
-            ],
+            colors: colorScheme == .dark ? darkColors : lightColors,
             startPoint: .topLeading,
             endPoint: .bottomTrailing
         )
         .ignoresSafeArea()
+    }
+
+    private var lightColors: [Color] {
+        [
+            Color(.systemBackground),
+            Color(red: 0.96, green: 0.98, blue: 0.98),
+            Color(red: 0.98, green: 0.97, blue: 0.94)
+        ]
+    }
+
+    private var darkColors: [Color] {
+        [
+            Color(red: 0.07, green: 0.09, blue: 0.10),
+            Color(red: 0.04, green: 0.12, blue: 0.13),
+            Color(red: 0.11, green: 0.10, blue: 0.07)
+        ]
     }
 }
 
@@ -209,9 +226,9 @@ struct HeaderIconButton: View {
             .font(.system(size: 18, weight: .semibold))
             .foregroundStyle(.primary)
             .frame(width: 42, height: 42)
-            .background(Color(.systemBackground).opacity(0.86), in: Circle())
+            .background(Color(.secondarySystemBackground), in: Circle())
             .overlay {
-                Circle().stroke(Color.black.opacity(0.06), lineWidth: 1)
+                Circle().stroke(Color.primary.opacity(0.08), lineWidth: 1)
             }
     }
 }
@@ -239,9 +256,9 @@ struct SuggestedPromptGrid: View {
                             .foregroundStyle(.primary)
                             .padding(.horizontal, 12)
                             .padding(.vertical, 8)
-                            .background(Color(.systemBackground), in: Capsule())
+                            .background(Color(.secondarySystemBackground), in: Capsule())
                             .overlay {
-                                Capsule().stroke(Color.black.opacity(0.08), lineWidth: 1)
+                                Capsule().stroke(Color.primary.opacity(0.08), lineWidth: 1)
                             }
                     }
                     .buttonStyle(.plain)
@@ -331,10 +348,10 @@ struct TypingIndicatorView: View {
             }
             .padding(.horizontal, 15)
             .padding(.vertical, 11)
-            .background(Color(.systemBackground).opacity(0.86), in: RoundedRectangle(cornerRadius: 17, style: .continuous))
+            .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 17, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: 17, style: .continuous)
-                    .stroke(Color.black.opacity(0.06), lineWidth: 1)
+                    .stroke(Color.primary.opacity(0.08), lineWidth: 1)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)

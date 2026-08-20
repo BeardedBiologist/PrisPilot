@@ -6,6 +6,7 @@ struct MessageBubbleView: View {
     var onApprove: (UUID) -> Void
     var onReject: (UUID) -> Void
     var onRejectAll: () -> Void
+    var onStartNewChat: () -> Void = {}
 
     var body: some View {
         switch message.content {
@@ -29,6 +30,8 @@ struct MessageBubbleView: View {
             }
         case .error(let error):
             ErrorBubble(error: error)
+        case .onboardingComplete:
+            OnboardingCompleteBubble(onStartNewChat: onStartNewChat)
         }
     }
 }
@@ -73,6 +76,7 @@ struct TextBubble: View {
                 )
             )
             .foregroundStyle(.white)
+            .textSelection(.enabled)
             .shadow(color: .blue.opacity(0.18), radius: 10, y: 4)
     }
 
@@ -83,7 +87,7 @@ struct TextBubble: View {
             .padding(.horizontal, 15)
             .padding(.vertical, 12)
             .background(
-                Color(.systemBackground).opacity(0.9),
+                Color(.secondarySystemBackground),
                 in: UnevenRoundedRectangle(
                     topLeadingRadius: 20,
                     bottomLeadingRadius: 6,
@@ -100,9 +104,10 @@ struct TextBubble: View {
                     topTrailingRadius: 20,
                     style: .continuous
                 )
-                .stroke(Color.black.opacity(0.06), lineWidth: 1)
+                .stroke(Color.primary.opacity(0.08), lineWidth: 1)
             }
             .foregroundStyle(.primary)
+            .textSelection(.enabled)
     }
 }
 
@@ -115,6 +120,51 @@ struct AssistantMessageContainer<Content: View>: View {
             content
                 .frame(maxWidth: .infinity, alignment: .leading)
             Spacer(minLength: 24)
+        }
+    }
+}
+
+// MARK: - Completion Bubble
+
+struct OnboardingCompleteBubble: View {
+    let onStartNewChat: () -> Void
+
+    var body: some View {
+        AssistantMessageContainer {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 10) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 22, weight: .semibold))
+                        .foregroundStyle(.green)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Setup complete")
+                            .font(.headline.weight(.semibold))
+                        Text("Thanks. PrisPilot is ready to use.")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                Text("Open a new chat when you are ready to log prices, build a shopping list, or plan a cheap shop.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+
+                Button {
+                    onStartNewChat()
+                } label: {
+                    Label("Start new chat", systemImage: "plus.bubble.fill")
+                        .font(.subheadline.weight(.semibold))
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+            }
+            .padding(14)
+            .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+            }
         }
     }
 }
@@ -137,10 +187,11 @@ struct ErrorBubble: View {
                     Text(error.localizedDescription)
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
                 }
             }
             .padding(14)
-            .background(Color(.systemBackground).opacity(0.9), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
                     .stroke(Color.orange.opacity(0.18), lineWidth: 1)

@@ -3,15 +3,18 @@ import Foundation
 // Gemini Developer API via REST — no SDK dependency needed.
 // Key is read from Keychain; never embedded in source.
 
-final class GeminiAIService: AIService {
+final class GeminiAIService: AIService, OnboardingAIService {
     let providerName: String
     var isAvailable: Bool = true
 
     private let apiKey: String
     private let model: String
     private let baseURL = "https://generativelanguage.googleapis.com/v1beta/models"
+    private let fallbackModels = ["gemini-2.5-flash-lite", "gemini-3.5-flash", "gemini-3.5-flash-lite", "gemini-3.1-flash-lite"]
+    private let requestAttemptCount = 2
+    private let retryDelay: Duration = .milliseconds(700)
 
-    init(apiKey: String, model: String = "gemini-3.5-flash-lite") {
+    init(apiKey: String, model: String = "gemini-2.5-flash") {
         self.apiKey = apiKey
         self.model = model
         self.providerName = "Gemini (\(model))"
@@ -24,33 +27,82 @@ final class GeminiAIService: AIService {
         context: AIContext,
         availableTools: [AIToolDefinition]
     ) async throws -> AIResponse {
-        let url = URL(string: "\(baseURL)/\(model):generateContent?key=\(apiKey)")!
+        let body = try buildRequestBody(messages: messages, context: context)
+        let response = try await generateContentWithFallback(body: body)
+        return parseResponse(response)
+    }
+
+    private func generateContentWithFallback(body: Data) async throws -> GeminiResponse {
+        var lastRecoverableError: AIServiceError?
+
+        for modelName in orderedModels {
+            for attempt in 1...requestAttemptCount {
+                do {
+                    return try await generateContent(modelName: modelName, body: body)
+                } catch let error as AIServiceError {
+                    switch error {
+                    case .modelOverloaded, .modelUnavailable:
+                        lastRecoverableError = error
+                        logRecoverableModelFailure(error, modelName: modelName, attempt: attempt)
+                        if attempt < requestAttemptCount {
+                            try? await Task.sleep(for: retryDelay)
+                            continue
+                        }
+                    case .quotaExhausted, .invalidAPIKey, .offline, .invalidResponse, .permissionDenied, .unknown:
+                        throw error
+                    }
+                }
+
+                break
+            }
+        }
+
+        throw lastRecoverableError ?? AIServiceError.modelOverloaded
+    }
+
+    private var orderedModels: [String] {
+        var models = [model]
+        for fallback in fallbackModels where !models.contains(fallback) {
+            models.append(fallback)
+        }
+        return models
+    }
+
+    private func logRecoverableModelFailure(_ error: AIServiceError, modelName: String, attempt: Int) {
+        #if DEBUG
+        print("Gemini recoverable failure: model=\(modelName), attempt=\(attempt), error=\(error.localizedDescription)")
+        #endif
+    }
+
+    private func generateContent(modelName: String, body: Data) async throws -> GeminiResponse {
+        let url = URL(string: "\(baseURL)/\(modelName):generateContent?key=\(apiKey)")!
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try buildRequestBody(messages: messages, context: context)
+        request.httpBody = body
 
         let (data, response) = try await URLSession.shared.data(for: request)
-
         if let http = response as? HTTPURLResponse {
             switch http.statusCode {
-            case 200: break
-            case 401, 403: throw AIServiceError.invalidAPIKey
-            case 429:      throw AIServiceError.quotaExhausted
+            case 200:
+                break
+            case 401, 403:
+                throw AIServiceError.invalidAPIKey
+            case 429:
+                throw AIServiceError.quotaExhausted
             default:
                 throw parseHTTPError(statusCode: http.statusCode, data: data)
             }
         }
 
         let geminiResponse = try JSONDecoder().decode(GeminiResponse.self, from: data)
-
         if let error = geminiResponse.error {
             if error.status == "RESOURCE_EXHAUSTED" { throw AIServiceError.quotaExhausted }
-            if error.status == "UNAUTHENTICATED"    { throw AIServiceError.invalidAPIKey }
+            if error.status == "UNAUTHENTICATED" { throw AIServiceError.invalidAPIKey }
+            if error.status == "UNAVAILABLE" || error.message.localizedCaseInsensitiveContains("high demand") { throw AIServiceError.modelOverloaded }
             throw AIServiceError.unknown(error.message)
         }
-
-        return parseResponse(geminiResponse)
+        return geminiResponse
     }
 
     private func parseHTTPError(statusCode: Int, data: Data) -> AIServiceError {
@@ -65,11 +117,94 @@ final class GeminiAIService: AIService {
                     .first ?? model
                 return .modelUnavailable(modelName)
             }
+            if error.status == "UNAVAILABLE" || error.message.localizedCaseInsensitiveContains("high demand") {
+                return .modelOverloaded
+            }
             return .unknown(error.message)
         }
 
         let body = String(data: data, encoding: .utf8) ?? "No response body"
         return .unknown("HTTP \(statusCode): \(body.prefix(200))")
+    }
+
+    // MARK: - Onboarding
+
+    func sendOnboardingTurn(
+        question: OnboardingQuestion,
+        userAnswer: String,
+        knownAnswers: [OnboardingQuestionID: String],
+        context: AIContext
+    ) async throws -> OnboardingAIResult {
+        let body = try buildOnboardingRequestBody(question: question, userAnswer: userAnswer, knownAnswers: knownAnswers, context: context)
+        let geminiResponse = try await generateContentWithFallback(body: body)
+
+        guard let text = geminiResponse.candidates?.first?.content?.parts.compactMap(\.text).joined(),
+              let jsonData = text.data(using: .utf8) else {
+            throw AIServiceError.invalidResponse
+        }
+
+        let decoded = try JSONDecoder().decode(GeminiOnboardingTurn.self, from: jsonData)
+        return decoded.result(defaultAnswer: userAnswer)
+    }
+
+    private func buildOnboardingRequestBody(
+        question: OnboardingQuestion,
+        userAnswer: String,
+        knownAnswers: [OnboardingQuestionID: String],
+        context: AIContext
+    ) throws -> Data {
+        let known = knownAnswers.map { "\($0.key.rawValue): \($0.value)" }.sorted().joined(separator: "\n")
+        let stores = context.enabledStoreBranches.joined(separator: ", ")
+        let prompt = """
+        You are PrisPilot's onboarding assistant. Be conversational and useful, but return only valid JSON.
+
+        Current setup question:
+        id: \(question.id.rawValue)
+        title: \(question.title)
+        prompt: \(question.prompt)
+        detail: \(question.detail)
+        options: \(question.options.joined(separator: ", "))
+
+        User answer:
+        \(userAnswer)
+
+        Known onboarding answers:
+        \(known.isEmpty ? "None" : known)
+
+        Current saved store branches:
+        \(stores.isEmpty ? "None" : stores)
+
+        Decide whether the answer is enough to advance, whether to ask one concise follow-up, or whether the user wants to skip/come back later. If they say anything like "later", "skip", or "come back to that", advance with skipped=true.
+
+        Extract structured effects when possible:
+        - For stores, create one store object per physical branch mentioned.
+        - For cheapestDefinition, use exactly one of: \(CheapestDefinition.allCases.map(\.rawValue).joined(separator: ", ")).
+        - For maxStoreCount, extract an integer if present.
+        - For minimumSavings, extract a NOK number if present.
+        - For diet, preferences, frequent products, and household size, create memory summaries when useful.
+        - For frequent products, create product names when useful.
+
+        Return JSON matching this schema:
+        {
+          "assistantText": "short friendly response",
+          "decision": "advance" | "followUp" | "skip",
+          "normalizedAnswer": "clean answer or null",
+          "settings": { "cheapestDefinition": null, "maxStoreCount": null, "minimumSavings": null },
+          "stores": [{ "chainName": "Rema 1000", "branchName": "Pindsle", "address": null, "isEnabled": true }],
+          "memories": [{ "summary": "Prefers Rema 1000", "category": "Preference", "strength": "Preference", "sensitivityLevel": "Standard" }],
+          "products": [{ "name": "Milk", "category": "Dairy", "unit": "l" }]
+        }
+        """
+
+        let body: [String: Any] = [
+            "contents": [["role": "user", "parts": [["text": prompt]]]],
+            "generationConfig": [
+                "temperature": 0.2,
+                "maxOutputTokens": 2048,
+                "responseMimeType": "application/json"
+            ]
+        ]
+        return try JSONSerialization.data(withJSONObject: body)
     }
 
     // MARK: - Request Building
@@ -103,7 +238,8 @@ final class GeminiAIService: AIService {
             "- Group related actions in one response (e.g. record a price AND add to list if user implies both).",
             "- Propose memory separately from shopping actions.",
             "- Keep text responses concise; let the proposed actions do the heavy lifting.",
-            "- For prices, include quantity and unit when mentioned."
+            "- For prices, include quantity and unit when mentioned.",
+            "- Stores are user-managed. If the user asks to add, edit, delete, enable, or disable supermarket branches, propose store actions. Do not assume Oslo branches."
         ]
 
         if !context.relevantMemories.isEmpty {
@@ -172,6 +308,44 @@ final class GeminiAIService: AIService {
                     "unit":     enumProp("Default unit", ["g", "kg", "ml", "l", "stk", "pk"])
                 ],
                 required: ["name"]
+            ),
+            makeFn(
+                name: "createStore",
+                desc: "Add a supermarket branch the user shops at or wants to track. Use for specific physical locations such as Rema 1000 Pindsle.",
+                props: [
+                    "chainName":  strProp("Supermarket chain, e.g. Rema 1000, Meny, Kiwi"),
+                    "branchName": strProp("Specific branch, area, or location name, e.g. Pindsle"),
+                    "address":    strProp("Optional address or area detail"),
+                    "isEnabled":  boolProp("Whether this branch should be enabled for shopping plans")
+                ],
+                required: ["chainName", "branchName"]
+            ),
+            makeFn(
+                name: "updateStore",
+                desc: "Edit an existing supermarket branch by name. Use for renaming, moving to another chain, changing address, or toggling enabled state.",
+                props: [
+                    "existingStoreName": strProp("Existing branch display name, e.g. Rema 1000 Pindsle"),
+                    "chainName":         strProp("New chain name if changing it"),
+                    "branchName":        strProp("New branch/location name if changing it"),
+                    "address":           strProp("New address or area detail if changing it"),
+                    "isEnabled":         boolProp("Whether this branch should be enabled")
+                ],
+                required: ["existingStoreName"]
+            ),
+            makeFn(
+                name: "deleteStore",
+                desc: "Delete a saved supermarket branch. Only use when the user clearly asks to remove or delete it.",
+                props: ["storeName": strProp("Saved branch display name to delete")],
+                required: ["storeName"]
+            ),
+            makeFn(
+                name: "setStoreEnabled",
+                desc: "Enable or disable a saved supermarket branch for shopping plans without deleting it.",
+                props: [
+                    "storeName": strProp("Saved branch display name"),
+                    "isEnabled": boolProp("True to enable, false to disable")
+                ],
+                required: ["storeName", "isEnabled"]
             )
         ]
     }
@@ -304,6 +478,51 @@ final class GeminiAIService: AIService {
                 riskLevel: .low
             ))
 
+        case "createStore":
+            guard let chainName = args["chainName"]?.stringValue,
+                  let branchName = args["branchName"]?.stringValue else { return .none }
+            let isEnabled = args["isEnabled"]?.boolValue ?? true
+            return .action(ProposedAction(
+                type: .createStore,
+                summary: "Add store: \(chainName) \(branchName)",
+                payload: .createStore(chainName: chainName, branchName: branchName, address: args["address"]?.stringValue, isEnabled: isEnabled),
+                riskLevel: .low
+            ))
+
+        case "updateStore":
+            guard let existingStoreName = args["existingStoreName"]?.stringValue else { return .none }
+            return .action(ProposedAction(
+                type: .updateStore,
+                summary: "Update store: \(existingStoreName)",
+                payload: .updateStore(
+                    existingStoreName: existingStoreName,
+                    chainName: args["chainName"]?.stringValue,
+                    branchName: args["branchName"]?.stringValue,
+                    address: args["address"]?.stringValue,
+                    isEnabled: args["isEnabled"]?.boolValue
+                ),
+                riskLevel: .medium
+            ))
+
+        case "deleteStore":
+            guard let storeName = args["storeName"]?.stringValue else { return .none }
+            return .action(ProposedAction(
+                type: .deleteStore,
+                summary: "Delete store: \(storeName)",
+                payload: .deleteStore(storeName: storeName),
+                riskLevel: .high
+            ))
+
+        case "setStoreEnabled":
+            guard let storeName = args["storeName"]?.stringValue,
+                  let isEnabled = args["isEnabled"]?.boolValue else { return .none }
+            return .action(ProposedAction(
+                type: isEnabled ? .enableStore : .disableStore,
+                summary: "\(isEnabled ? "Enable" : "Disable") store: \(storeName)",
+                payload: .setStoreEnabled(storeName: storeName, isEnabled: isEnabled),
+                riskLevel: .low
+            ))
+
         default:
             return .none
         }
@@ -313,4 +532,130 @@ final class GeminiAIService: AIService {
         let n = NSDecimalNumber(decimal: d)
         return n.stringValue
     }
+}
+
+private struct GeminiOnboardingTurn: Decodable {
+    let assistantText: String
+    let decision: String
+    let normalizedAnswer: String?
+    let settings: GeminiOnboardingSettings?
+    let stores: [GeminiOnboardingStore]?
+    let memories: [GeminiOnboardingMemory]?
+    let products: [GeminiOnboardingProduct]?
+
+    func result(defaultAnswer: String) -> OnboardingAIResult {
+        let actions = storeActions + productActions + settingActions
+        let memoryProposals = (memories ?? []).compactMap { $0.memoryProposal }
+        return OnboardingAIResult(
+            assistantText: assistantText,
+            shouldAdvance: decision != "followUp",
+            normalizedAnswer: normalizedAnswer ?? (decision == "skip" ? "Skipped for now" : defaultAnswer),
+            proposedActions: actions,
+            memoryProposals: memoryProposals
+        )
+    }
+
+    private var storeActions: [ProposedAction] {
+        (stores ?? []).compactMap { store in
+            guard !store.chainName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                  !store.branchName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+            return ProposedAction(
+                type: .createStore,
+                summary: "Add store: \(store.chainName) \(store.branchName)",
+                payload: .createStore(
+                    chainName: store.chainName,
+                    branchName: store.branchName,
+                    address: store.address,
+                    isEnabled: store.isEnabled ?? true
+                ),
+                riskLevel: .low,
+                requiresConfirmation: false
+            )
+        }
+    }
+
+    private var productActions: [ProposedAction] {
+        (products ?? []).compactMap { product in
+            guard !product.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+            let unit = product.unit.flatMap { MeasurementUnit(rawValue: $0) }
+            return ProposedAction(
+                type: .createProduct,
+                summary: "Add product: \(product.name)",
+                payload: .createProduct(name: product.name, category: product.category, unit: unit),
+                riskLevel: .low,
+                requiresConfirmation: false
+            )
+        }
+    }
+
+    private var settingActions: [ProposedAction] {
+        guard let settings else { return [] }
+        var actions: [ProposedAction] = []
+        if let cheapestDefinition = settings.cheapestDefinition {
+            actions.append(ProposedAction(
+                type: .changeAppSetting,
+                summary: "Set cheapest strategy: \(cheapestDefinition)",
+                payload: .changeAppSetting(key: "cheapestDefinition", value: cheapestDefinition),
+                riskLevel: .low,
+                requiresConfirmation: false
+            ))
+        }
+        if let maxStoreCount = settings.maxStoreCount {
+            actions.append(ProposedAction(
+                type: .changeAppSetting,
+                summary: "Set max stores: \(maxStoreCount)",
+                payload: .changeAppSetting(key: "maxStoreCount", value: String(maxStoreCount)),
+                riskLevel: .low,
+                requiresConfirmation: false
+            ))
+        }
+        if let minimumSavings = settings.minimumSavings {
+            actions.append(ProposedAction(
+                type: .changeAppSetting,
+                summary: "Set extra-store saving threshold: kr \(minimumSavings)",
+                payload: .changeAppSetting(key: "minimumSavings", value: String(minimumSavings)),
+                riskLevel: .low,
+                requiresConfirmation: false
+            ))
+        }
+        return actions
+    }
+}
+
+private struct GeminiOnboardingSettings: Decodable {
+    let cheapestDefinition: String?
+    let maxStoreCount: Int?
+    let minimumSavings: Double?
+}
+
+private struct GeminiOnboardingStore: Decodable {
+    let chainName: String
+    let branchName: String
+    let address: String?
+    let isEnabled: Bool?
+}
+
+private struct GeminiOnboardingMemory: Decodable {
+    let summary: String
+    let category: String?
+    let strength: String?
+    let sensitivityLevel: String?
+
+    var memoryProposal: MemoryProposal? {
+        let trimmed = summary.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        let memory = AIMemory(
+            summary: trimmed,
+            category: category.flatMap { MemoryCategory(rawValue: $0) } ?? .preference,
+            strength: strength.flatMap { ConstraintStrength(rawValue: $0) } ?? .preference,
+            sensitivityLevel: sensitivityLevel.flatMap { SensitivityLevel(rawValue: $0) } ?? .standard
+        )
+        return MemoryProposal(memory: memory, reason: "Captured during onboarding.")
+    }
+}
+
+private struct GeminiOnboardingProduct: Decodable {
+    let name: String
+    let category: String?
+    let unit: String?
 }

@@ -48,9 +48,15 @@ class ChatViewModel {
 
         let sessionID = appStore.ensureDefaultChatSession()
         inputText = ""
+        appStore.appendMessage(ChatMessage(role: .user, content: .text(text)), to: sessionID)
+
+        if appStore.isAIOnboardingActive(for: sessionID) {
+            handleAIOnboardingAnswer(text, in: sessionID)
+            return
+        }
+
         isSending = true
         isTyping = true
-        appStore.appendMessage(ChatMessage(role: .user, content: .text(text)), to: sessionID)
 
         Task {
             defer {
@@ -64,10 +70,89 @@ class ChatViewModel {
                     availableTools: []
                 )
                 handleResponse(response, in: sessionID)
+            } catch let error as AIServiceError {
+                appStore.appendMessage(ChatMessage(role: .assistant, content: .error(error)), to: sessionID)
             } catch {
                 appStore.appendMessage(ChatMessage(role: .assistant, content: .error(.unknown(error.localizedDescription))), to: sessionID)
             }
         }
+    }
+
+    private func handleAIOnboardingAnswer(_ text: String, in sessionID: UUID) {
+        isSending = true
+        isTyping = true
+
+        Task {
+            defer {
+                isSending = false
+                isTyping = false
+            }
+
+            guard let questionIndex = appStore.aiOnboardingProgressBySessionID[sessionID],
+                  let question = OnboardingFlow.question(after: questionIndex),
+                  let onboardingService = aiService as? any OnboardingAIService else {
+                let message = appStore.nextAIOnboardingMessage(after: text, in: sessionID)
+                appStore.appendMessage(message, to: sessionID)
+                return
+            }
+
+            do {
+                let result = try await onboardingService.sendOnboardingTurn(
+                    question: question,
+                    userAnswer: text,
+                    knownAnswers: appStore.onboardingAnswers,
+                    context: buildContext()
+                )
+                applyOnboardingResult(result, originalAnswer: text, sessionID: sessionID)
+            } catch let error as AIServiceError {
+                appStore.appendMessage(ChatMessage(role: .assistant, content: .error(error)), to: sessionID)
+            } catch {
+                appStore.appendMessage(ChatMessage(role: .assistant, content: .error(.unknown(error.localizedDescription))), to: sessionID)
+            }
+        }
+    }
+
+    private func applyOnboardingResult(_ result: OnboardingAIResult, originalAnswer: String, sessionID: UUID) {
+        appStore.appendMessage(ChatMessage(role: .assistant, content: .text(result.assistantText)), to: sessionID)
+
+        var tags: [ActivityTag] = []
+        for action in result.proposedActions {
+            var executableAction = action
+            if let ids = try? appStore.execute(executableAction) {
+                executableAction.resultingRecordIDs = ids
+                executableAction.status = .completed
+                tags.append(ActivityTag(from: executableAction))
+            }
+        }
+
+        for proposal in result.memoryProposals {
+            let action = ProposedAction(
+                type: .createMemory,
+                summary: "Remembered: \(proposal.memory.summary)",
+                payload: .createMemory(
+                    summary: proposal.memory.summary,
+                    category: proposal.memory.category,
+                    strength: proposal.memory.strength,
+                    sensitivityLevel: proposal.memory.sensitivityLevel
+                ),
+                requiresConfirmation: false
+            )
+            var executableAction = action
+            if let ids = try? appStore.execute(executableAction) {
+                executableAction.resultingRecordIDs = ids
+                executableAction.status = .completed
+                tags.append(ActivityTag(from: executableAction))
+            }
+        }
+
+        if !tags.isEmpty {
+            appStore.appendMessage(ChatMessage(role: .assistant, content: .activityTags(tags)), to: sessionID)
+        }
+
+        guard result.shouldAdvance else { return }
+        let answer = result.normalizedAnswer ?? originalAnswer
+        let nextMessage = appStore.nextAIOnboardingMessage(after: answer, in: sessionID)
+        appStore.appendMessage(nextMessage, to: sessionID)
     }
 
     // MARK: - Action Approval
@@ -201,7 +286,7 @@ class ChatViewModel {
         AIContext(
             relevantMemories: Array(appStore.activeMemories.prefix(10)),
             availableShoppingLists: appStore.activeLists.map { $0.name },
-            enabledStoreBranches: appStore.enabledBranches.map { $0.displayName },
+            enabledStoreBranches: appStore.branches.map { "\($0.displayName) (\($0.isEnabled ? "enabled" : "disabled"))" },
             userPreferences: "",
             currency: appStore.settings.currency
         )

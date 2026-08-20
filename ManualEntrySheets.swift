@@ -24,6 +24,7 @@ struct AddShoppingListSheet: View {
                         let trimmed = name.trimmingCharacters(in: .whitespaces)
                         guard !trimmed.isEmpty else { return }
                         store.shoppingLists.append(ShoppingList(name: trimmed))
+                        store.persistNow()
                         dismiss()
                     }
                     .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
@@ -84,6 +85,7 @@ struct AddShoppingListItemSheet: View {
         )
         if !notes.isEmpty { item.notes = notes.trimmingCharacters(in: .whitespaces) }
         store.shoppingLists[idx].items.append(item)
+        store.persistNow()
     }
 }
 
@@ -209,6 +211,7 @@ struct AddPriceObservationSheet: View {
             source: .manual
         )
         store.priceObservations.append(obs)
+        store.persistNow()
     }
 }
 
@@ -256,6 +259,7 @@ struct AddProductSheet: View {
                             defaultUnit: hasDefaultUnit ? selectedUnit : nil
                         )
                         store.products.append(product)
+                        store.persistNow()
                         dismiss()
                     }
                     .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
@@ -338,5 +342,6 @@ struct AddRecipeSheet: View {
             return RecipeIngredient(productName: name, quantity: qty, unit: draft.unit)
         }
         store.recipes.append(recipe)
+        store.persistNow()
     }
 }

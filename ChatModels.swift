@@ -4,6 +4,7 @@ struct ChatSession: Identifiable {
     let id: UUID
     var title: String
     var messages: [ChatMessage]
+    var purpose: ChatSessionPurpose
     let createdAt: Date
     var updatedAt: Date
 
@@ -11,12 +12,14 @@ struct ChatSession: Identifiable {
         id: UUID = UUID(),
         title: String = "New Chat",
         messages: [ChatMessage] = [],
+        purpose: ChatSessionPurpose = .general,
         createdAt: Date = Date(),
         updatedAt: Date = Date()
     ) {
         self.id = id
         self.title = title
         self.messages = messages
+        self.purpose = purpose
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }
@@ -29,6 +32,11 @@ struct ChatSession: Identifiable {
         }
         return "No messages yet"
     }
+}
+
+enum ChatSessionPurpose: String {
+    case general
+    case aiOnboarding
 }
 
 struct ChatMessage: Identifiable {
@@ -45,7 +53,7 @@ struct ChatMessage: Identifiable {
     }
 }
 
-enum ChatMessageRole {
+enum ChatMessageRole: String {
     case user
     case assistant
 }
@@ -55,4 +63,5 @@ enum ChatMessageContent {
     case proposedActions(intro: String?, actions: [ProposedAction], memoryProposals: [MemoryProposal])
     case activityTags([ActivityTag])
     case error(AIServiceError)
+    case onboardingComplete
 }

@@ -20,6 +20,7 @@ struct ActionProposalView: View {
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .lineSpacing(2)
+                    .textSelection(.enabled)
             }
 
             VStack(alignment: .leading, spacing: 0) {
@@ -28,10 +29,10 @@ struct ActionProposalView: View {
                 actionRows
                 memoryRows
             }
-            .background(Color(.systemBackground).opacity(0.92), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .strokeBorder(Color.black.opacity(0.07), lineWidth: 1)
+                    .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
             }
             .shadow(color: .black.opacity(0.05), radius: 12, y: 5)
 
@@ -120,6 +121,7 @@ struct ActionRow: View {
                 Text(action.summary)
                     .font(.subheadline.weight(.medium))
                     .lineLimit(2)
+                    .textSelection(.enabled)
                 Text(action.type.displayName)
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -184,6 +186,7 @@ struct MemoryProposalRow: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text(proposal.memory.summary)
                     .font(.subheadline.weight(.medium))
+                    .textSelection(.enabled)
                 Text("Remember for later")
                     .font(.caption)
                     .foregroundStyle(.secondary)

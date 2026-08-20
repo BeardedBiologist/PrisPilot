@@ -6,7 +6,6 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             List {
-                // Profile section
                 Section {
                     Label("Sign In", systemImage: "person.circle")
                         .foregroundStyle(.secondary)
@@ -14,28 +13,26 @@ struct SettingsView: View {
                     Text("Sign in to sync across devices and share with your household.")
                 }
 
-                // Country & Currency
                 Section("Region") {
                     LabeledContent("Country", value: store.settings.country.name)
                     LabeledContent("Currency", value: "\(store.settings.currency.code) (\(store.settings.currency.symbol))")
                     LabeledContent("Language", value: store.settings.language.uppercased())
                 }
 
-                // Stores
                 Section("Supermarkets") {
-                    NavigationLink("Manage stores & branches") {
+                    NavigationLink {
                         StoreSettingsView()
+                    } label: {
+                        LabeledContent("Manage stores", value: "\(store.branches.count) branches")
                     }
                 }
 
-                // Shopping
                 Section("Shopping") {
                     LabeledContent("Strategy", value: store.settings.cheapestDefinition.rawValue)
                     LabeledContent("Max stores", value: "\(store.settings.maxSupermarketCount)")
                     LabeledContent("Min. extra saving", value: "kr \(NSDecimalNumber(decimal: store.settings.minimumAdditionalStoreSavings).stringValue)")
                 }
 
-                // AI
                 Section("AI") {
                     NavigationLink("AI Memory") {
                         MemoryListView()
@@ -50,7 +47,6 @@ struct SettingsView: View {
                     }
                 }
 
-                // Data
                 Section("Data") {
                     Label("Export data", systemImage: "square.and.arrow.up")
                     Label("Delete all data", systemImage: "trash")
@@ -64,30 +60,226 @@ struct SettingsView: View {
 
 struct StoreSettingsView: View {
     @Environment(AppStore.self) private var store
+    @State private var sheetMode: StoreEditorSheet.Mode?
 
     var body: some View {
         List {
+            if store.branches.isEmpty {
+                ContentUnavailableView(
+                    "No Stores Yet",
+                    systemImage: "storefront",
+                    description: Text("Add the supermarket branches you use, or ask the AI to create stores for your area.")
+                )
+                .listRowBackground(Color.clear)
+            }
+
             ForEach(store.chains) { chain in
-                Section(chain.name) {
+                Section {
                     let chainBranches = store.branches.filter { $0.chainID == chain.id }
                     if chainBranches.isEmpty {
-                        Text("No branches added")
-                            .foregroundStyle(.secondary)
-                            .font(.subheadline)
+                        HStack {
+                            Text("No branches")
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                            Button(role: .destructive) {
+                                store.deleteChain(chain.id)
+                            } label: {
+                                Image(systemName: "trash")
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Delete \(chain.name)")
+                        }
                     } else {
                         ForEach(chainBranches) { branch in
-                            HStack {
-                                Text(branch.name)
-                                Spacer()
-                                Image(systemName: branch.isEnabled ? "checkmark.circle.fill" : "circle")
-                                    .foregroundStyle(branch.isEnabled ? .green : Color(.systemGray3))
+                            Button {
+                                sheetMode = .edit(branch)
+                            } label: {
+                                StoreBranchRow(branch: branch) { enabled in
+                                    store.setStoreBranchEnabled(matching: branch.displayName, isEnabled: enabled)
+                                }
+                            }
+                            .buttonStyle(.plain)
+                            .swipeActions(edge: .trailing) {
+                                Button(role: .destructive) {
+                                    store.deleteStoreBranch(matching: branch.displayName)
+                                } label: {
+                                    Label("Delete", systemImage: "trash")
+                                }
+                            }
+                        }
+                    }
+                } header: {
+                    Text(chain.name)
+                }
+            }
+        }
+        .navigationTitle("Stores")
+        .navigationBarTitleDisplayMode(.large)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button {
+                    sheetMode = .add
+                } label: {
+                    Label("Add store", systemImage: "plus")
+                }
+            }
+        }
+        .sheet(item: $sheetMode) { mode in
+            StoreEditorSheet(mode: mode)
+                .environment(store)
+        }
+    }
+}
+
+struct StoreBranchRow: View {
+    let branch: StoreBranch
+    let onEnabledChange: (Bool) -> Void
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "storefront.fill")
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(branch.isEnabled ? .blue : .secondary)
+                .frame(width: 34, height: 34)
+                .background((branch.isEnabled ? Color.blue : Color.gray).opacity(0.1), in: Circle())
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(branch.name)
+                    .font(.body.weight(.medium))
+                    .foregroundStyle(.primary)
+                if let address = branch.address, !address.isEmpty {
+                    Text(address)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Spacer()
+
+            Toggle("Enabled", isOn: Binding(
+                get: { branch.isEnabled },
+                set: onEnabledChange
+            ))
+            .labelsHidden()
+        }
+        .padding(.vertical, 4)
+    }
+}
+
+struct StoreEditorSheet: View, Identifiable {
+    enum Mode: Identifiable {
+        case add
+        case edit(StoreBranch)
+
+        var id: String {
+            switch self {
+            case .add: return "add"
+            case .edit(let branch): return branch.id.uuidString
+            }
+        }
+    }
+
+    @Environment(AppStore.self) private var store
+    @Environment(\.dismiss) private var dismiss
+    let mode: Mode
+
+    @State private var chainName = ""
+    @State private var branchName = ""
+    @State private var address = ""
+    @State private var isEnabled = true
+
+    var id: String { mode.id }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Chain") {
+                    TextField("e.g. Rema 1000, Meny, Kiwi", text: $chainName)
+                        .textInputAutocapitalization(.words)
+                    if !store.chains.isEmpty {
+                        Picker("Existing chain", selection: $chainName) {
+                            Text("Custom").tag(chainName)
+                            ForEach(store.chains) { chain in
+                                Text(chain.name).tag(chain.name)
                             }
                         }
                     }
                 }
+
+                Section("Branch") {
+                    TextField("e.g. Pindsle", text: $branchName)
+                        .textInputAutocapitalization(.words)
+                    TextField("Address or area", text: $address)
+                        .textInputAutocapitalization(.words)
+                    Toggle("Enabled for shopping plans", isOn: $isEnabled)
+                }
             }
+            .navigationTitle(title)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(saveTitle) {
+                        save()
+                        dismiss()
+                    }
+                    .disabled(!isValid)
+                }
+            }
+            .onAppear(perform: loadInitialValues)
         }
-        .navigationTitle("Stores & Branches")
-        .navigationBarTitleDisplayMode(.large)
+    }
+
+    private var title: String {
+        switch mode {
+        case .add: return "Add Store"
+        case .edit: return "Edit Store"
+        }
+    }
+
+    private var saveTitle: String {
+        switch mode {
+        case .add: return "Add"
+        case .edit: return "Save"
+        }
+    }
+
+    private var isValid: Bool {
+        !chainName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+        !branchName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private func loadInitialValues() {
+        guard case .edit(let branch) = mode else { return }
+        chainName = branch.chainName
+        branchName = branch.name
+        address = branch.address ?? ""
+        isEnabled = branch.isEnabled
+    }
+
+    private func save() {
+        let trimmedChain = chainName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedBranch = branchName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedAddress = address.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        switch mode {
+        case .add:
+            store.createStoreBranch(
+                chainName: trimmedChain,
+                branchName: trimmedBranch,
+                address: trimmedAddress.isEmpty ? nil : trimmedAddress,
+                isEnabled: isEnabled
+            )
+        case .edit(let branch):
+            store.updateStoreBranch(
+                matching: branch.displayName,
+                chainName: trimmedChain,
+                branchName: trimmedBranch,
+                address: trimmedAddress.isEmpty ? nil : trimmedAddress,
+                isEnabled: isEnabled
+            )
+        }
     }
 }

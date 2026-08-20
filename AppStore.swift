@@ -1,38 +1,61 @@
 import Foundation
 import Observation
+import SwiftData
+
+private extension String {
+    var nilIfEmpty: String? {
+        isEmpty ? nil : self
+    }
+}
 
 @Observable
 class AppStore {
     // Settings
-    var settings: AppSettings = .defaultSettings
+    var settings: AppSettings = .defaultSettings { didSet { persistIfReady() } }
 
     // Stores
-    var chains: [SupermarketChain] = []
-    var branches: [StoreBranch] = []
+    var chains: [SupermarketChain] = [] { didSet { persistIfReady() } }
+    var branches: [StoreBranch] = [] { didSet { persistIfReady() } }
 
     // Products
-    var products: [Product] = []
+    var products: [Product] = [] { didSet { persistIfReady() } }
 
     // Prices
-    var priceObservations: [PriceObservation] = []
+    var priceObservations: [PriceObservation] = [] { didSet { persistIfReady() } }
 
     // Shopping
-    var shoppingLists: [ShoppingList] = []
+    var shoppingLists: [ShoppingList] = [] { didSet { persistIfReady() } }
 
     // Recipes
-    var recipes: [Recipe] = []
+    var recipes: [Recipe] = [] { didSet { persistIfReady() } }
 
     // AI Memory
-    var memories: [AIMemory] = []
+    var memories: [AIMemory] = [] { didSet { persistIfReady() } }
 
     // Chat
-    var chatSessions: [ChatSession] = []
-    var selectedChatSessionID: UUID?
+    var chatSessions: [ChatSession] = [] { didSet { persistIfReady() } }
+    var selectedChatSessionID: UUID? { didSet { persistIfReady() } }
+
+    // Onboarding
+    var onboardingAnswers: [OnboardingQuestionID: String] = [:] { didSet { persistIfReady() } }
+    var aiOnboardingProgressBySessionID: [UUID: Int] = [:]
 
     static let shared = AppStore()
 
+    private var persistenceStore: SwiftDataPersistenceStore?
+    private var isRestoringSnapshot = false
+
     init() {
         seedInitialData()
+    }
+
+    func configurePersistence(container: ModelContainer) {
+        persistenceStore = SwiftDataPersistenceStore(container: container)
+        if let snapshot = persistenceStore?.loadSnapshot() {
+            restore(from: snapshot)
+        } else {
+            persistNow()
+        }
     }
 
     // Reads from APIKeys.swift (gitignored). Falls back to mock if key is empty.
@@ -53,6 +76,35 @@ class AppStore {
 
     var activeMemories: [AIMemory] {
         memories.filter { $0.isActive }
+    }
+
+    func persistNow() {
+        persistenceStore?.saveSnapshot(AppStoreSnapshot(store: self))
+    }
+
+    private func persistIfReady() {
+        guard !isRestoringSnapshot else { return }
+        persistNow()
+    }
+
+    private func restore(from snapshot: AppStoreSnapshot) {
+        isRestoringSnapshot = true
+        settings = snapshot.settings
+        chains = snapshot.chains
+        branches = snapshot.branches
+        products = snapshot.products
+        priceObservations = snapshot.priceObservations
+        shoppingLists = snapshot.shoppingLists
+        recipes = snapshot.recipes
+        memories = snapshot.memories
+        chatSessions = snapshot.chatSessions.map(\.chatSession)
+        selectedChatSessionID = snapshot.selectedChatSessionID
+        onboardingAnswers = snapshot.onboardingAnswers
+        aiOnboardingProgressBySessionID = [:]
+        if let sessionID = existingIncompleteAIOnboardingSessionID {
+            aiOnboardingProgressBySessionID[sessionID] = inferredAIOnboardingProgress()
+        }
+        isRestoringSnapshot = false
     }
 
     var selectedChatSession: ChatSession? {
@@ -78,15 +130,37 @@ class AppStore {
     }
 
     @discardableResult
-    func createChatSession(title: String = "New Chat", messages: [ChatMessage] = [AppStore.welcomeChatMessage()]) -> UUID {
-        let session = ChatSession(title: title, messages: messages)
+    func createChatSession(
+        title: String = "New Chat",
+        messages: [ChatMessage] = [AppStore.welcomeChatMessage()],
+        purpose: ChatSessionPurpose = .general
+    ) -> UUID {
+        let session = ChatSession(title: title, messages: messages, purpose: purpose)
         chatSessions.insert(session, at: 0)
         selectedChatSessionID = session.id
         return session.id
     }
 
-    func startAIOnboardingChat() {
-        createChatSession(title: "AI Setup", messages: [Self.aiOnboardingMessage()])
+    @discardableResult
+    func resumeAIOnboardingChatIfAvailable() -> Bool {
+        guard let sessionID = existingIncompleteAIOnboardingSessionID else { return false }
+        selectedChatSessionID = sessionID
+        if aiOnboardingProgressBySessionID[sessionID] == nil {
+            aiOnboardingProgressBySessionID[sessionID] = inferredAIOnboardingProgress()
+        }
+        return true
+    }
+
+    @discardableResult
+    func startOrResumeAIOnboardingChat() -> UUID {
+        if resumeAIOnboardingChatIfAvailable(), let selectedChatSessionID {
+            return selectedChatSessionID
+        }
+
+        onboardingAnswers = [:]
+        let sessionID = createChatSession(title: "AI Setup", messages: [Self.aiOnboardingMessage()], purpose: .aiOnboarding)
+        aiOnboardingProgressBySessionID[sessionID] = 0
+        return sessionID
     }
 
     func selectChatSession(_ id: UUID) {
@@ -96,6 +170,14 @@ class AppStore {
 
     func messages(for sessionID: UUID) -> [ChatMessage] {
         chatSessions.first(where: { $0.id == sessionID })?.messages ?? []
+    }
+
+    func purpose(for sessionID: UUID) -> ChatSessionPurpose {
+        chatSessions.first(where: { $0.id == sessionID })?.purpose ?? .general
+    }
+
+    func isAIOnboardingActive(for sessionID: UUID) -> Bool {
+        purpose(for: sessionID) == .aiOnboarding && aiOnboardingProgressBySessionID[sessionID] != nil
     }
 
     func appendMessage(_ message: ChatMessage, to sessionID: UUID) {
@@ -115,6 +197,7 @@ class AppStore {
 
     func deleteChatSessions(at offsets: IndexSet) {
         for offset in offsets.sorted(by: >) {
+            aiOnboardingProgressBySessionID[chatSessions[offset].id] = nil
             chatSessions.remove(at: offset)
         }
         if let selectedChatSessionID,
@@ -123,8 +206,34 @@ class AppStore {
         }
     }
 
+    private var existingIncompleteAIOnboardingSessionID: UUID? {
+        chatSessions
+            .filter { $0.purpose == .aiOnboarding && !isCompletedAIOnboardingSession($0) }
+            .sorted { $0.updatedAt > $1.updatedAt }
+            .first?.id
+    }
+
+    private func isCompletedAIOnboardingSession(_ session: ChatSession) -> Bool {
+        session.messages.contains { message in
+            if case .onboardingComplete = message.content {
+                return true
+            }
+            return false
+        }
+    }
+
+    private func inferredAIOnboardingProgress() -> Int {
+        for (index, question) in OnboardingFlow.questions.enumerated() {
+            if onboardingAnswers[question.id] == nil {
+                return index
+            }
+        }
+        return OnboardingFlow.questions.count
+    }
+
     private func refreshChatSessionMetadata(at index: Int) {
         chatSessions[index].updatedAt = Date()
+        guard chatSessions[index].purpose == .general else { return }
         if let firstUserMessage = chatSessions[index].messages.first(where: { $0.role == .user }),
            case .text(let text) = firstUserMessage.content {
             chatSessions[index].title = Self.chatTitle(from: text)
@@ -136,13 +245,68 @@ class AppStore {
         return String(singleLine.prefix(42))
     }
 
+    func recordOnboardingAnswer(_ answer: String, for questionID: OnboardingQuestionID) {
+        onboardingAnswers[questionID] = answer
+        applyOnboardingAnswer(answer, for: questionID)
+    }
+
+    func nextAIOnboardingMessage(after answer: String, in sessionID: UUID) -> ChatMessage {
+        let answeredIndex = aiOnboardingProgressBySessionID[sessionID] ?? 0
+        if let question = OnboardingFlow.question(after: answeredIndex) {
+            recordOnboardingAnswer(answer, for: question.id)
+        }
+
+        let nextIndex = answeredIndex + 1
+        aiOnboardingProgressBySessionID[sessionID] = nextIndex
+
+        if let nextQuestion = OnboardingFlow.question(after: nextIndex) {
+            return ChatMessage(role: .assistant, content: .text(nextQuestion.prompt))
+        }
+
+        settings.onboardingCompleted = true
+        aiOnboardingProgressBySessionID[sessionID] = nil
+        return ChatMessage(role: .assistant, content: .onboardingComplete)
+    }
+
+    private func applyOnboardingAnswer(_ answer: String, for questionID: OnboardingQuestionID) {
+        switch questionID {
+        case .cheapestDefinition:
+            applySettingChange(key: "cheapestDefinition", value: answer)
+        case .maxStoreCount:
+            applySettingChange(key: "maxStoreCount", value: answer)
+        case .minimumSavings:
+            applySettingChange(key: "minimumSavings", value: answer)
+        default:
+            break
+        }
+    }
+
+    private func applySettingChange(key: String, value: String) {
+        switch key {
+        case "cheapestDefinition":
+            if let definition = CheapestDefinition(rawValue: value) {
+                settings.cheapestDefinition = definition
+            }
+        case "maxStoreCount":
+            if let count = Int(value.filter(\.isNumber)), count > 0 {
+                settings.maxSupermarketCount = count
+            }
+        case "minimumSavings":
+            if let amount = Decimal(string: value.filter { $0.isNumber || $0 == "." || $0 == "," }.replacingOccurrences(of: ",", with: ".")) {
+                settings.minimumAdditionalStoreSavings = amount
+            }
+        default:
+            break
+        }
+    }
+
     private static func welcomeChatMessage() -> ChatMessage {
         let text = "Hi! I'm your PrisPilot assistant. I can help you:\n\n• Track grocery prices across stores\n• Manage shopping lists\n• Plan meals and estimate costs\n• Find the cheapest shopping options\n\nTry: \"I paid kr 39.90 for 400 g minced beef at Kiwi\""
         return ChatMessage(role: .assistant, content: .text(text))
     }
 
     private static func aiOnboardingMessage() -> ChatMessage {
-        let text = "Let's set up PrisPilot together. Answer these questions in one message, or one at a time:\n\n1. Which grocery stores or branches do you usually shop at?\n2. How many stores are you willing to visit for one shopping trip?\n3. Do you want the absolute cheapest basket, or the best practical trip?\n4. Are there products, brands, diets, or budgets I should remember?"
+        let text = OnboardingFlow.questions.first?.prompt ?? "Let's set up PrisPilot."
         return ChatMessage(role: .assistant, content: .text(text))
     }
 
@@ -150,6 +314,7 @@ class AppStore {
 
     @discardableResult
     func execute(_ action: ProposedAction) throws -> [UUID] {
+        defer { persistNow() }
         switch action.payload {
         case .createPriceObservation(let productName, let storeBranchName, let price, let quantity, let unit, let isPromotion, let date):
             let product = findOrCreateProduct(name: productName)
@@ -182,6 +347,22 @@ class AppStore {
             shoppingLists.append(list)
             return [list.id]
 
+        case .createStore(let chainName, let branchName, let address, let isEnabled):
+            let branch = createStoreBranch(chainName: chainName, branchName: branchName, address: address, isEnabled: isEnabled)
+            return [branch.id]
+
+        case .updateStore(let existingStoreName, let chainName, let branchName, let address, let isEnabled):
+            guard let branch = updateStoreBranch(matching: existingStoreName, chainName: chainName, branchName: branchName, address: address, isEnabled: isEnabled) else { return [] }
+            return [branch.id]
+
+        case .deleteStore(let storeName):
+            guard let deletedID = deleteStoreBranch(matching: storeName) else { return [] }
+            return [deletedID]
+
+        case .setStoreEnabled(let storeName, let isEnabled):
+            guard let branch = setStoreBranchEnabled(matching: storeName, isEnabled: isEnabled) else { return [] }
+            return [branch.id]
+
         case .createMemory(let summary, let category, let strength, let sensitivityLevel):
             let memory = AIMemory(
                 summary: summary,
@@ -202,7 +383,8 @@ class AppStore {
             recipes.append(recipe)
             return [recipe.id]
 
-        case .changeAppSetting:
+        case .changeAppSetting(let key, let value):
+            applySettingChange(key: key, value: value)
             return []
 
         case .generic:
@@ -224,20 +406,110 @@ class AppStore {
 
     @discardableResult
     private func findOrCreateBranch(name: String) -> StoreBranch {
-        if let existing = branches.first(where: {
-            $0.displayName.lowercased() == name.lowercased() || $0.name.lowercased() == name.lowercased()
-        }) {
+        if let existing = findStoreBranch(matching: name) {
             return existing
         }
-        // Find a chain match if branch name includes a chain name
-        let matchingChain = chains.first { chain in name.lowercased().contains(chain.name.lowercased()) }
-        let branch = StoreBranch(
-            chainID: matchingChain?.id ?? UUID(),
+
+        let matchingChain = chains.first { chain in name.localizedCaseInsensitiveContains(chain.name) }
+        let branchName: String
+        if let matchingChain {
+            branchName = name.replacingOccurrences(of: matchingChain.name, with: "", options: .caseInsensitive).trimmingCharacters(in: .whitespacesAndNewlines)
+        } else {
+            branchName = name
+        }
+
+        return createStoreBranch(
             chainName: matchingChain?.name ?? "Unknown",
-            name: name
+            branchName: branchName.isEmpty ? name : branchName,
+            address: nil,
+            isEnabled: true
+        )
+    }
+
+    @discardableResult
+    func createStoreBranch(chainName: String, branchName: String, address: String? = nil, isEnabled: Bool = true) -> StoreBranch {
+        let trimmedChainName = chainName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedBranchName = branchName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let chain = findOrCreateChain(name: trimmedChainName.isEmpty ? "Unknown" : trimmedChainName)
+        let branch = StoreBranch(
+            chainID: chain.id,
+            chainName: chain.name,
+            name: trimmedBranchName.isEmpty ? chain.name : trimmedBranchName,
+            address: address?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty,
+            isEnabled: isEnabled
         )
         branches.append(branch)
+        persistNow()
         return branch
+    }
+
+    @discardableResult
+    func updateStoreBranch(matching name: String, chainName: String?, branchName: String?, address: String?, isEnabled: Bool?) -> StoreBranch? {
+        guard let index = branches.firstIndex(where: { branchMatches($0, name: name) }) else { return nil }
+        let current = branches[index]
+        let resolvedChain: SupermarketChain
+        if let chainName, !chainName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            resolvedChain = findOrCreateChain(name: chainName)
+        } else {
+            resolvedChain = findOrCreateChain(name: current.chainName)
+        }
+
+        let updated = StoreBranch(
+            id: current.id,
+            chainID: resolvedChain.id,
+            chainName: resolvedChain.name,
+            name: branchName?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty ?? current.name,
+            address: address?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty ?? current.address,
+            isEnabled: isEnabled ?? current.isEnabled
+        )
+        branches[index] = updated
+        persistNow()
+        return updated
+    }
+
+    @discardableResult
+    func deleteStoreBranch(matching name: String) -> UUID? {
+        guard let index = branches.firstIndex(where: { branchMatches($0, name: name) }) else { return nil }
+        let id = branches[index].id
+        branches.remove(at: index)
+        persistNow()
+        return id
+    }
+
+    @discardableResult
+    func setStoreBranchEnabled(matching name: String, isEnabled: Bool) -> StoreBranch? {
+        guard let index = branches.firstIndex(where: { branchMatches($0, name: name) }) else { return nil }
+        branches[index].isEnabled = isEnabled
+        persistNow()
+        return branches[index]
+    }
+
+    @discardableResult
+    func findOrCreateChain(name: String) -> SupermarketChain {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let existing = chains.first(where: { $0.name.lowercased() == trimmed.lowercased() }) {
+            return existing
+        }
+        let chain = SupermarketChain(name: trimmed.isEmpty ? "Unknown" : trimmed)
+        chains.append(chain)
+        return chain
+    }
+
+    func deleteChain(_ chainID: UUID) {
+        chains.removeAll { $0.id == chainID }
+        branches.removeAll { $0.chainID == chainID }
+        persistNow()
+    }
+
+    private func findStoreBranch(matching name: String) -> StoreBranch? {
+        branches.first { branchMatches($0, name: name) }
+    }
+
+    private func branchMatches(_ branch: StoreBranch, name: String) -> Bool {
+        let target = name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return branch.displayName.lowercased() == target ||
+            branch.name.lowercased() == target ||
+            "\(branch.chainName) \(branch.name)".lowercased().contains(target)
     }
 
     @discardableResult
@@ -261,17 +533,7 @@ class AppStore {
 
         chains = [kiwi, rema, meny, spar, coop]
 
-        branches = [
-            StoreBranch(chainID: kiwi.id, chainName: "Kiwi", name: "Majorstuen"),
-            StoreBranch(chainID: kiwi.id, chainName: "Kiwi", name: "Grünerløkka"),
-            StoreBranch(chainID: kiwi.id, chainName: "Kiwi", name: "Torshov"),
-            StoreBranch(chainID: rema.id, chainName: "Rema 1000", name: "Bislett"),
-            StoreBranch(chainID: rema.id, chainName: "Rema 1000", name: "Frogner"),
-            StoreBranch(chainID: meny.id, chainName: "Meny", name: "Aker Brygge"),
-            StoreBranch(chainID: meny.id, chainName: "Meny", name: "Bogstadveien"),
-            StoreBranch(chainID: spar.id, chainName: "Spar", name: "Nydalen"),
-            StoreBranch(chainID: coop.id, chainName: "Coop Extra", name: "Lørenskog"),
-        ]
+        branches = []
 
         shoppingLists = [
             ShoppingList(name: "Weekly Shop")

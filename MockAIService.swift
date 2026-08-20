@@ -2,7 +2,7 @@ import Foundation
 import Observation
 
 @Observable
-class MockAIService: AIService {
+class MockAIService: AIService, OnboardingAIService {
     let providerName = "Mock AI (Development)"
     var isAvailable = true
     private(set) var requestCount = 0
@@ -25,6 +25,62 @@ class MockAIService: AIService {
         }
 
         return generateResponse(for: lastMessage.content.lowercased(), context: context)
+    }
+
+    func sendOnboardingTurn(
+        question: OnboardingQuestion,
+        userAnswer: String,
+        knownAnswers: [OnboardingQuestionID: String],
+        context: AIContext
+    ) async throws -> OnboardingAIResult {
+        requestCount += 1
+        try await Task.sleep(for: .seconds(0.5))
+
+        let lowercasedAnswer = userAnswer.lowercased()
+        if lowercasedAnswer.contains("later") || lowercasedAnswer.contains("skip") || lowercasedAnswer.contains("come back") {
+            return OnboardingAIResult(
+                assistantText: "No problem. We can come back to \(question.title.lowercased()) later.",
+                shouldAdvance: true,
+                normalizedAnswer: "Skipped for now",
+                proposedActions: [],
+                memoryProposals: []
+            )
+        }
+
+        var actions: [ProposedAction] = []
+        var memories: [MemoryProposal] = []
+        if question.id == .stores {
+            for store in mockStores(from: userAnswer) {
+                actions.append(ProposedAction(
+                    type: .createStore,
+                    summary: "Add store: \(store.chain) \(store.branch)",
+                    payload: .createStore(chainName: store.chain, branchName: store.branch, address: nil, isEnabled: true)
+                ))
+            }
+        } else if [.dietaryNeeds, .productPreferences, .frequentProducts, .householdSize].contains(question.id) {
+            let memory = AIMemory(summary: userAnswer, category: .preference, strength: .preference)
+            memories.append(MemoryProposal(memory: memory, reason: "Captured during onboarding."))
+        }
+
+        let reply = actions.isEmpty && memories.isEmpty
+            ? "Got it. I saved that for setup."
+            : "Got it. I updated setup with what you told me."
+        return OnboardingAIResult(
+            assistantText: reply,
+            shouldAdvance: true,
+            normalizedAnswer: userAnswer,
+            proposedActions: actions,
+            memoryProposals: memories
+        )
+    }
+
+    private func mockStores(from answer: String) -> [(chain: String, branch: String)] {
+        let knownChains = ["Rema 1000", "Meny", "Kiwi", "Coop Extra", "Spar"]
+        return knownChains.compactMap { chain in
+            guard answer.localizedCaseInsensitiveContains(chain) else { return nil }
+            let branch = answer.localizedCaseInsensitiveContains("pindsle") ? "Pindsle" : "Local branch"
+            return (chain, branch)
+        }
     }
 
     private func generateResponse(for input: String, context: AIContext) -> AIResponse {

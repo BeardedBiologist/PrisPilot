@@ -42,7 +42,7 @@ enum ProposedActionType: String {
     case createShoppingList, updateShoppingList, deleteShoppingList
     case addShoppingListItem, updateShoppingListItem, completeShoppingListItem, removeShoppingListItem
     case createRecipe, updateRecipe, deleteRecipe, addRecipeToShoppingList
-    case createStore, enableStore, disableStore
+    case createStore, updateStore, deleteStore, enableStore, disableStore
     case updateShoppingPreferences
     case createMemory, updateMemory, deleteMemory
     case createHousehold, inviteHouseholdMember, updateHouseholdMember
@@ -68,6 +68,8 @@ enum ProposedActionType: String {
         case .deleteRecipe: return "Delete recipe"
         case .addRecipeToShoppingList: return "Add recipe to list"
         case .createStore: return "Add store"
+        case .updateStore: return "Update store"
+        case .deleteStore: return "Delete store"
         case .enableStore: return "Enable store"
         case .disableStore: return "Disable store"
         case .updateShoppingPreferences: return "Update preferences"
@@ -95,8 +97,8 @@ enum ProposedActionType: String {
         case .createRecipe, .updateRecipe: return "fork.knife"
         case .deleteRecipe: return "fork.knife"
         case .addRecipeToShoppingList: return "cart.fill.badge.plus"
-        case .createStore, .enableStore: return "storefront"
-        case .disableStore: return "storefront"
+        case .createStore, .updateStore, .enableStore: return "storefront"
+        case .deleteStore, .disableStore: return "storefront"
         case .updateShoppingPreferences: return "slider.horizontal.3"
         case .createMemory, .updateMemory: return "brain.head.profile"
         case .deleteMemory: return "brain.head.profile"
@@ -111,7 +113,7 @@ enum ProposedActionType: String {
 
     var isDestructive: Bool {
         [.deleteProduct, .deletePriceObservation, .deleteShoppingList,
-         .removeShoppingListItem, .deleteRecipe, .deleteMemory].contains(self)
+         .removeShoppingListItem, .deleteRecipe, .deleteStore, .deleteMemory].contains(self)
     }
 }
 
@@ -122,6 +124,10 @@ enum ProposedActionPayload {
     case createPriceObservation(productName: String, storeBranchName: String, price: Decimal, quantity: Double?, unit: MeasurementUnit?, isPromotion: Bool, date: Date)
     case addShoppingListItem(listName: String, productName: String, quantity: String, notes: String?)
     case createShoppingList(name: String)
+    case createStore(chainName: String, branchName: String, address: String?, isEnabled: Bool)
+    case updateStore(existingStoreName: String, chainName: String?, branchName: String?, address: String?, isEnabled: Bool?)
+    case deleteStore(storeName: String)
+    case setStoreEnabled(storeName: String, isEnabled: Bool)
     case createMemory(summary: String, category: MemoryCategory, strength: ConstraintStrength, sensitivityLevel: SensitivityLevel)
     case changeAppSetting(key: String, value: String)
     case createRecipe(title: String, servings: Int)

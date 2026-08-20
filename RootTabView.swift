@@ -2,6 +2,7 @@ import SwiftUI
 
 struct RootTabView: View {
     @Environment(AppStore.self) private var store
+    @Environment(\.scenePhase) private var scenePhase
     @State private var selectedTab: RootTab = .chat
     @State private var showOnboarding = false
 
@@ -29,7 +30,16 @@ struct RootTabView: View {
         .onAppear {
             store.ensureDefaultChatSession()
             if !store.settings.onboardingCompleted {
-                showOnboarding = true
+                if store.resumeAIOnboardingChatIfAvailable() {
+                    selectedTab = .chat
+                } else {
+                    showOnboarding = true
+                }
+            }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase != .active {
+                store.persistNow()
             }
         }
     }
@@ -111,10 +121,10 @@ struct MainChatTabIcon: View {
     var body: some View {
         ZStack {
             Circle()
-                .fill(isSelected ? Color.blue : Color(.systemBackground))
+                .fill(isSelected ? Color.blue : Color(.secondarySystemBackground))
                 .overlay {
                     Circle()
-                        .stroke(Color.blue, lineWidth: 2)
+                        .stroke(isSelected ? Color.blue : Color.blue.opacity(0.8), lineWidth: 2)
                 }
                 .shadow(color: .black.opacity(0.18), radius: 8, y: 3)
             Image(systemName: "bubble.left.and.bubble.right.fill")

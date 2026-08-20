@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		C45E009230377ABD0021D7F2 /* OnboardingFlow.swift in Sources */ = {isa = PBXBuildFile; fileRef = C45E009130377ABD0021D7F2 /* OnboardingFlow.swift */; };
+		C45E0094303782730021D7F2 /* SwiftDataPersistence.swift in Sources */ = {isa = PBXBuildFile; fileRef = C45E0093303782730021D7F2 /* SwiftDataPersistence.swift */; };
 		C4CCD1773037534300157B4E /* AppModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4CCD1763037534300157B4E /* AppModels.swift */; };
 		C4CCD1793037535000157B4E /* AITypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4CCD1783037535000157B4E /* AITypes.swift */; };
 		C4CCD17B3037536B00157B4E /* ProposedAction.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4CCD17A3037536B00157B4E /* ProposedAction.swift */; };
@@ -50,6 +52,8 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		C45E009130377ABD0021D7F2 /* OnboardingFlow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingFlow.swift; sourceTree = "<group>"; };
+		C45E0093303782730021D7F2 /* SwiftDataPersistence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftDataPersistence.swift; sourceTree = "<group>"; };
 		C4ACBAF930374FA900D1D068 /* PrisPilot.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PrisPilot.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		C4ACBB0830374FAC00D1D068 /* PrisPilotTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PrisPilotTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		C4ACBB1230374FAC00D1D068 /* PrisPilotUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PrisPilotUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -153,6 +157,8 @@
 				C4CCD19E30375A1D00157B4E /* OnboardingView.swift */,
 				C4CCD1A030375A4500157B4E /* ManualEntrySheets.swift */,
 				C4CCD1A230375A5E00157B4E /* PriceComparisonView.swift */,
+				C45E009130377ABD0021D7F2 /* OnboardingFlow.swift */,
+				C45E0093303782730021D7F2 /* SwiftDataPersistence.swift */,
 			);
 			sourceTree = "<group>";
 		};
@@ -326,7 +332,9 @@
 				C4CCD1A330375A5E00157B4E /* PriceComparisonView.swift in Sources */,
 				C4CCD1773037534300157B4E /* AppModels.swift in Sources */,
 				C4CCD189303753FB00157B4E /* ActionProposalView.swift in Sources */,
+				C45E0094303782730021D7F2 /* SwiftDataPersistence.swift in Sources */,
 				C4CCD17B3037536B00157B4E /* ProposedAction.swift in Sources */,
+				C45E009230377ABD0021D7F2 /* OnboardingFlow.swift in Sources */,
 				C4CCD18F3037541E00157B4E /* PricesView.swift in Sources */,
 				C4CCD19B3037575800157B4E /* GeminiAIService.swift in Sources */,
 				C4CCD183303753C700157B4E /* ChatViewModel.swift in Sources */,

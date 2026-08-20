@@ -6,19 +6,28 @@ struct OnboardingView: View {
     let onStartAISetup: () -> Void
     @State private var step: Step = .welcome
     @State private var selectedBranchIDs: Set<UUID> = []
+    @State private var selectedOption: String?
+    @State private var freeformAnswer = ""
 
     init(onStartAISetup: @escaping () -> Void = {}) {
         self.onStartAISetup = onStartAISetup
     }
 
-    enum Step { case welcome, selectStores, done }
+    enum Step: Equatable {
+        case welcome
+        case manualQuestion(Int)
+        case done
+    }
 
     var body: some View {
         NavigationStack {
             switch step {
-            case .welcome:    welcomeStep
-            case .selectStores: storeStep
-            case .done:       doneStep
+            case .welcome:
+                welcomeStep
+            case .manualQuestion(let index):
+                manualQuestionStep(index)
+            case .done:
+                doneStep
             }
         }
         .interactiveDismissDisabled(step != .welcome)
@@ -50,7 +59,7 @@ struct OnboardingView: View {
 
             VStack(spacing: 12) {
                 Button {
-                    step = .selectStores
+                    beginManualOnboarding()
                 } label: {
                     Label("Set up manually", systemImage: "slider.horizontal.3")
                         .frame(maxWidth: .infinity)
@@ -60,8 +69,7 @@ struct OnboardingView: View {
                 .controlSize(.large)
 
                 Button {
-                    store.startAIOnboardingChat()
-                    store.settings.onboardingCompleted = true
+                    store.startOrResumeAIOnboardingChat()
                     onStartAISetup()
                     dismiss()
                 } label: {
@@ -89,12 +97,112 @@ struct OnboardingView: View {
         }
     }
 
-    // MARK: - Store Selection
+    // MARK: - Manual Questions
 
-    private var storeStep: some View {
+    private func manualQuestionStep(_ index: Int) -> some View {
+        let question = OnboardingFlow.questions[index]
+
+        return VStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Step \(index + 1) of \(OnboardingFlow.questions.count)")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Text(question.title)
+                    .font(.largeTitle.weight(.bold))
+                Text(question.detail)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 24)
+            .padding(.top, 18)
+            .padding(.bottom, 10)
+
+            ProgressView(value: Double(index + 1), total: Double(OnboardingFlow.questions.count))
+                .padding(.horizontal, 24)
+                .padding(.bottom, 10)
+
+            if question.id == .stores {
+                storeSelectionList
+            } else {
+                answerForm(for: question)
+            }
+
+            Button(index == OnboardingFlow.questions.count - 1 ? "Finish setup" : "Continue") {
+                saveManualAnswer(question, index: index)
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            .disabled(!canContinue(question))
+            .padding(.horizontal, 24)
+            .padding(.vertical, 18)
+        }
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarLeading) {
+                Button("Back") { goBack(from: index) }
+            }
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button("Skip") { movePastQuestion(index) }
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .onAppear {
+            loadQuestionState(question)
+        }
+    }
+
+    private func answerForm(for question: OnboardingQuestion) -> some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                Text(question.prompt)
+                    .font(.title3.weight(.semibold))
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if !question.options.isEmpty {
+                    VStack(spacing: 10) {
+                        ForEach(question.options, id: \.self) { option in
+                            Button {
+                                selectedOption = option
+                                if !question.allowsFreeText {
+                                    freeformAnswer = option
+                                }
+                            } label: {
+                                HStack {
+                                    Text(option)
+                                        .font(.body.weight(.medium))
+                                    Spacer()
+                                    Image(systemName: selectedOption == option ? "checkmark.circle.fill" : "circle")
+                                        .foregroundStyle(selectedOption == option ? .blue : Color(.systemGray3))
+                                }
+                                .padding(14)
+                                .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+
+                if question.allowsFreeText {
+                    TextField("Type your answer", text: $freeformAnswer, axis: .vertical)
+                        .textFieldStyle(.plain)
+                        .lineLimit(3...7)
+                        .padding(14)
+                        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .stroke(Color.black.opacity(0.08), lineWidth: 1)
+                        }
+                }
+            }
+            .padding(24)
+        }
+    }
+
+    private var storeSelectionList: some View {
         List {
             Section {
-                Text("Pick the store branches you shop at. You can change these any time in Settings.")
+                Text(OnboardingFlow.questions.first(where: { $0.id == .stores })?.prompt ?? "Choose stores")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .listRowBackground(Color.clear)
@@ -124,21 +232,6 @@ struct OnboardingView: View {
                 }
             }
         }
-        .navigationTitle("Your Stores")
-        .navigationBarTitleDisplayMode(.large)
-        .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
-                Button("Continue") {
-                    applyBranchSelection()
-                    step = .done
-                }
-                .fontWeight(.semibold)
-            }
-        }
-        .onAppear {
-            // Pre-select all branches by default
-            selectedBranchIDs = Set(store.branches.map { $0.id })
-        }
     }
 
     // MARK: - Done
@@ -156,17 +249,18 @@ struct OnboardingView: View {
                 VStack(spacing: 10) {
                     Text("You're all set!")
                         .font(.largeTitle.weight(.bold))
-                    let count = store.enabledBranches.count
-                    Text("Tracking \(count) store branch\(count == 1 ? "" : "es").")
+                    Text("Thanks. PrisPilot is ready to help with prices, lists, and shopping plans.")
                         .font(.title3)
                         .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
                 }
+                .padding(.horizontal, 24)
 
                 VStack(alignment: .leading, spacing: 14) {
-                    tipRow("bubble.left.and.bubble.right.fill", "Chat with AI to record prices and manage lists")
-                    tipRow("cart.fill",  "Browse and manage shopping lists manually")
-                    tipRow("tag.fill",   "Compare prices across your enabled stores")
-                    tipRow("brain.head.profile", "Your AI learns your preferences over time")
+                    tipRow("bubble.left.and.bubble.right.fill", "Open Chat to record prices and manage lists")
+                    tipRow("cart.fill", "Browse shopping lists manually")
+                    tipRow("tag.fill", "Compare prices across your enabled stores")
+                    tipRow("brain.head.profile", "Your AI preferences are stored as setup answers")
                 }
                 .padding(18)
                 .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 16))
@@ -197,10 +291,75 @@ struct OnboardingView: View {
 
     // MARK: - Helpers
 
+    private func beginManualOnboarding() {
+        selectedBranchIDs = Set(store.branches.filter(\.isEnabled).map(\.id))
+        if selectedBranchIDs.isEmpty {
+            selectedBranchIDs = Set(store.branches.map(\.id))
+        }
+        step = .manualQuestion(0)
+    }
+
+    private func loadQuestionState(_ question: OnboardingQuestion) {
+        if question.id == .stores {
+            if selectedBranchIDs.isEmpty {
+                selectedBranchIDs = Set(store.branches.filter(\.isEnabled).map(\.id))
+            }
+            return
+        }
+
+        let existing = store.onboardingAnswers[question.id] ?? ""
+        freeformAnswer = existing
+        selectedOption = question.options.first { $0 == existing }
+    }
+
+    private func canContinue(_ question: OnboardingQuestion) -> Bool {
+        if question.id == .stores {
+            return !selectedBranchIDs.isEmpty
+        }
+        if !question.allowsFreeText {
+            return selectedOption != nil
+        }
+        return !freeformAnswer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || selectedOption != nil
+    }
+
+    private func saveManualAnswer(_ question: OnboardingQuestion, index: Int) {
+        if question.id == .stores {
+            applyBranchSelection()
+            let enabledNames = store.enabledBranches.map(\.displayName).joined(separator: ", ")
+            store.recordOnboardingAnswer(enabledNames, for: question.id)
+        } else {
+            let answer = freeformAnswer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? selectedOption ?? "" : freeformAnswer
+            store.recordOnboardingAnswer(answer, for: question.id)
+        }
+        movePastQuestion(index)
+    }
+
+    private func movePastQuestion(_ index: Int) {
+        selectedOption = nil
+        freeformAnswer = ""
+        if index + 1 < OnboardingFlow.questions.count {
+            step = .manualQuestion(index + 1)
+        } else {
+            store.settings.onboardingCompleted = true
+            step = .done
+        }
+    }
+
+    private func goBack(from index: Int) {
+        selectedOption = nil
+        freeformAnswer = ""
+        if index == 0 {
+            step = .welcome
+        } else {
+            step = .manualQuestion(index - 1)
+        }
+    }
+
     private func applyBranchSelection() {
         for i in store.branches.indices {
             store.branches[i].isEnabled = selectedBranchIDs.contains(store.branches[i].id)
         }
+        store.persistNow()
     }
 }
 
