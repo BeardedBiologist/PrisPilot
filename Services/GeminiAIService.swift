@@ -534,6 +534,18 @@ final class GeminiAIService: AIService, OnboardingAIService {
     }
 }
 
+private extension KeyedDecodingContainer {
+    func decodeFirstPresentString(for keys: [Key]) throws -> String? {
+        for key in keys {
+            if let value = try decodeIfPresent(String.self, forKey: key),
+               !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                return value
+            }
+        }
+        return nil
+    }
+}
+
 private struct GeminiOnboardingTurn: Decodable {
     let assistantText: String
     let decision: String
@@ -542,6 +554,31 @@ private struct GeminiOnboardingTurn: Decodable {
     let stores: [GeminiOnboardingStore]?
     let memories: [GeminiOnboardingMemory]?
     let products: [GeminiOnboardingProduct]?
+
+    enum CodingKeys: String, CodingKey {
+        case assistantText
+        case assistant_text
+        case message
+        case response
+        case decision
+        case normalizedAnswer
+        case normalized_answer
+        case settings
+        case stores
+        case memories
+        case products
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        assistantText = try container.decodeFirstPresentString(for: [.assistantText, .assistant_text, .message, .response]) ?? "Got it. I've updated setup with that."
+        decision = try container.decodeIfPresent(String.self, forKey: .decision) ?? "advance"
+        normalizedAnswer = try container.decodeFirstPresentString(for: [.normalizedAnswer, .normalized_answer])
+        settings = try container.decodeIfPresent(GeminiOnboardingSettings.self, forKey: .settings)
+        stores = try container.decodeIfPresent([GeminiOnboardingStore].self, forKey: .stores)
+        memories = try container.decodeIfPresent([GeminiOnboardingMemory].self, forKey: .memories)
+        products = try container.decodeIfPresent([GeminiOnboardingProduct].self, forKey: .products)
+    }
 
     func result(defaultAnswer: String) -> OnboardingAIResult {
         let actions = storeActions + productActions + settingActions
@@ -557,14 +594,16 @@ private struct GeminiOnboardingTurn: Decodable {
 
     private var storeActions: [ProposedAction] {
         (stores ?? []).compactMap { store in
-            guard !store.chainName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-                  !store.branchName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+            guard let chainName = store.chainName?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  let branchName = store.branchName?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !chainName.isEmpty,
+                  !branchName.isEmpty else { return nil }
             return ProposedAction(
                 type: .createStore,
-                summary: "Add store: \(store.chainName) \(store.branchName)",
+                summary: "Add store: \(chainName) \(branchName)",
                 payload: .createStore(
-                    chainName: store.chainName,
-                    branchName: store.branchName,
+                    chainName: chainName,
+                    branchName: branchName,
                     address: store.address,
                     isEnabled: store.isEnabled ?? true
                 ),
@@ -576,12 +615,12 @@ private struct GeminiOnboardingTurn: Decodable {
 
     private var productActions: [ProposedAction] {
         (products ?? []).compactMap { product in
-            guard !product.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+            guard let name = product.name?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty else { return nil }
             let unit = product.unit.flatMap { MeasurementUnit(rawValue: $0) }
             return ProposedAction(
                 type: .createProduct,
-                summary: "Add product: \(product.name)",
-                payload: .createProduct(name: product.name, category: product.category, unit: unit),
+                summary: "Add product: \(name)",
+                payload: .createProduct(name: name, category: product.category, unit: unit),
                 riskLevel: .low,
                 requiresConfirmation: false
             )
@@ -629,21 +668,20 @@ private struct GeminiOnboardingSettings: Decodable {
 }
 
 private struct GeminiOnboardingStore: Decodable {
-    let chainName: String
-    let branchName: String
+    let chainName: String?
+    let branchName: String?
     let address: String?
     let isEnabled: Bool?
 }
 
 private struct GeminiOnboardingMemory: Decodable {
-    let summary: String
+    let summary: String?
     let category: String?
     let strength: String?
     let sensitivityLevel: String?
 
     var memoryProposal: MemoryProposal? {
-        let trimmed = summary.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return nil }
+        guard let trimmed = summary?.trimmingCharacters(in: .whitespacesAndNewlines), !trimmed.isEmpty else { return nil }
         let memory = AIMemory(
             summary: trimmed,
             category: category.flatMap { MemoryCategory(rawValue: $0) } ?? .preference,
@@ -655,7 +693,7 @@ private struct GeminiOnboardingMemory: Decodable {
 }
 
 private struct GeminiOnboardingProduct: Decodable {
-    let name: String
+    let name: String?
     let category: String?
     let unit: String?
 }

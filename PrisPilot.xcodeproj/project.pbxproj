@@ -32,6 +32,7 @@
 		C4CCD19F30375A1D00157B4E /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4CCD19E30375A1D00157B4E /* OnboardingView.swift */; };
 		C4CCD1A130375A4500157B4E /* ManualEntrySheets.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4CCD1A030375A4500157B4E /* ManualEntrySheets.swift */; };
 		C4CCD1A330375A5E00157B4E /* PriceComparisonView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4CCD1A230375A5E00157B4E /* PriceComparisonView.swift */; };
+		C4D8788F3037897E002CD76D /* PrisPilotApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4D8788D3037897E002CD76D /* PrisPilotApp.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -81,6 +82,7 @@
 		C4CCD19E30375A1D00157B4E /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
 		C4CCD1A030375A4500157B4E /* ManualEntrySheets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManualEntrySheets.swift; sourceTree = "<group>"; };
 		C4CCD1A230375A5E00157B4E /* PriceComparisonView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PriceComparisonView.swift; sourceTree = "<group>"; };
+		C4D8788D3037897E002CD76D /* PrisPilotApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrisPilotApp.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -134,31 +136,11 @@
 				C4ACBB0B30374FAC00D1D068 /* PrisPilotTests */,
 				C4ACBB1530374FAC00D1D068 /* PrisPilotUITests */,
 				C4ACBAFA30374FA900D1D068 /* Products */,
-				C4CCD1763037534300157B4E /* AppModels.swift */,
-				C4CCD1783037535000157B4E /* AITypes.swift */,
-				C4CCD17A3037536B00157B4E /* ProposedAction.swift */,
-				C4CCD17C3037538E00157B4E /* MockAIService.swift */,
-				C4CCD17E303753A700157B4E /* AppStore.swift */,
-				C4CCD180303753AD00157B4E /* ChatModels.swift */,
-				C4CCD182303753C700157B4E /* ChatViewModel.swift */,
-				C4CCD184303753DC00157B4E /* ChatView.swift */,
-				C4CCD186303753E700157B4E /* MessageBubbleView.swift */,
-				C4CCD188303753FB00157B4E /* ActionProposalView.swift */,
-				C4CCD18A3037540300157B4E /* ActivityTagView.swift */,
-				C4CCD18C3037541100157B4E /* ShoppingView.swift */,
-				C4CCD18E3037541E00157B4E /* PricesView.swift */,
-				C4CCD1903037542900157B4E /* RecipesView.swift */,
-				C4CCD1923037543700157B4E /* SettingsView.swift */,
-				C4CCD1943037543C00157B4E /* RootTabView.swift */,
-				C4CCD1963037571D00157B4E /* KeychainService.swift */,
-				C4CCD1983037572800157B4E /* GeminiAPITypes.swift */,
-				C4CCD19A3037575800157B4E /* GeminiAIService.swift */,
-				C4CCD19C3037583D00157B4E /* APIKeys.swift */,
-				C4CCD19E30375A1D00157B4E /* OnboardingView.swift */,
-				C4CCD1A030375A4500157B4E /* ManualEntrySheets.swift */,
-				C4CCD1A230375A5E00157B4E /* PriceComparisonView.swift */,
-				C45E009130377ABD0021D7F2 /* OnboardingFlow.swift */,
-				C45E0093303782730021D7F2 /* SwiftDataPersistence.swift */,
+				C4D878963037919B002CD76D /* App */,
+				C4D878973037919C002CD76D /* Models */,
+				C4D878983037919C002CD76D /* Store */,
+				C4D878993037919D002CD76D /* Services */,
+				C4D8789A3037919E002CD76D /* Features */,
 			);
 			sourceTree = "<group>";
 		};
@@ -170,6 +152,115 @@
 				C4ACBB1230374FAC00D1D068 /* PrisPilotUITests.xctest */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		C4D878963037919B002CD76D /* App */ = {
+			isa = PBXGroup;
+			children = (
+				C4CCD1943037543C00157B4E /* RootTabView.swift */,
+				C4D8788D3037897E002CD76D /* PrisPilotApp.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		C4D878973037919C002CD76D /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				C4CCD1763037534300157B4E /* AppModels.swift */,
+				C4CCD1783037535000157B4E /* AITypes.swift */,
+				C4CCD17A3037536B00157B4E /* ProposedAction.swift */,
+				C4CCD180303753AD00157B4E /* ChatModels.swift */,
+				C4CCD1983037572800157B4E /* GeminiAPITypes.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		C4D878983037919C002CD76D /* Store */ = {
+			isa = PBXGroup;
+			children = (
+				C4CCD17E303753A700157B4E /* AppStore.swift */,
+				C45E0093303782730021D7F2 /* SwiftDataPersistence.swift */,
+			);
+			path = Store;
+			sourceTree = "<group>";
+		};
+		C4D878993037919D002CD76D /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				C4CCD17C3037538E00157B4E /* MockAIService.swift */,
+				C4CCD19A3037575800157B4E /* GeminiAIService.swift */,
+				C4CCD1963037571D00157B4E /* KeychainService.swift */,
+				C4CCD19C3037583D00157B4E /* APIKeys.swift */,
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
+		C4D8789A3037919E002CD76D /* Features */ = {
+			isa = PBXGroup;
+			children = (
+				C4D8789B3037919F002CD76D /* Chat */,
+				C4D8789C3037919F002CD76D /* Onboarding */,
+				C4D8789D303791A0002CD76D /* Shopping */,
+				C4D8789E303791A1002CD76D /* Prices */,
+				C4D8789F303791A1002CD76D /* Recipes */,
+				C4D878A0303791A2002CD76D /* Settings */,
+			);
+			path = Features;
+			sourceTree = "<group>";
+		};
+		C4D8789B3037919F002CD76D /* Chat */ = {
+			isa = PBXGroup;
+			children = (
+				C4CCD184303753DC00157B4E /* ChatView.swift */,
+				C4CCD182303753C700157B4E /* ChatViewModel.swift */,
+				C4CCD186303753E700157B4E /* MessageBubbleView.swift */,
+				C4CCD188303753FB00157B4E /* ActionProposalView.swift */,
+				C4CCD18A3037540300157B4E /* ActivityTagView.swift */,
+			);
+			path = Chat;
+			sourceTree = "<group>";
+		};
+		C4D8789C3037919F002CD76D /* Onboarding */ = {
+			isa = PBXGroup;
+			children = (
+				C4CCD19E30375A1D00157B4E /* OnboardingView.swift */,
+				C45E009130377ABD0021D7F2 /* OnboardingFlow.swift */,
+			);
+			path = Onboarding;
+			sourceTree = "<group>";
+		};
+		C4D8789D303791A0002CD76D /* Shopping */ = {
+			isa = PBXGroup;
+			children = (
+				C4CCD18C3037541100157B4E /* ShoppingView.swift */,
+				C4CCD1A030375A4500157B4E /* ManualEntrySheets.swift */,
+			);
+			path = Shopping;
+			sourceTree = "<group>";
+		};
+		C4D8789E303791A1002CD76D /* Prices */ = {
+			isa = PBXGroup;
+			children = (
+				C4CCD18E3037541E00157B4E /* PricesView.swift */,
+				C4CCD1A230375A5E00157B4E /* PriceComparisonView.swift */,
+			);
+			path = Prices;
+			sourceTree = "<group>";
+		};
+		C4D8789F303791A1002CD76D /* Recipes */ = {
+			isa = PBXGroup;
+			children = (
+				C4CCD1903037542900157B4E /* RecipesView.swift */,
+			);
+			path = Recipes;
+			sourceTree = "<group>";
+		};
+		C4D878A0303791A2002CD76D /* Settings */ = {
+			isa = PBXGroup;
+			children = (
+				C4CCD1923037543700157B4E /* SettingsView.swift */,
+			);
+			path = Settings;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -330,6 +421,7 @@
 				C4CCD1953037543C00157B4E /* RootTabView.swift in Sources */,
 				C4CCD185303753DC00157B4E /* ChatView.swift in Sources */,
 				C4CCD1A330375A5E00157B4E /* PriceComparisonView.swift in Sources */,
+				C4D8788F3037897E002CD76D /* PrisPilotApp.swift in Sources */,
 				C4CCD1773037534300157B4E /* AppModels.swift in Sources */,
 				C4CCD189303753FB00157B4E /* ActionProposalView.swift in Sources */,
 				C45E0094303782730021D7F2 /* SwiftDataPersistence.swift in Sources */,
