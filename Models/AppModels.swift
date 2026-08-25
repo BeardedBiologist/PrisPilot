@@ -274,6 +274,9 @@ struct ShoppingList: Codable, Identifiable {
     var estimatedTotal: Decimal?
     var actualTotal: Decimal?
     var createdAt: Date
+    var completedAt: Date?
+    var archivedAt: Date?
+    var optimizationSnapshot: OptimizationSnapshot?
 
     init(id: UUID = UUID(), name: String, scope: DataScope = .personal) {
         self.id = id
@@ -283,6 +286,18 @@ struct ShoppingList: Codable, Identifiable {
         self.items = []
         self.createdAt = Date()
     }
+}
+
+/// Result of the last time `AppStore.optimizeShoppingList(_:)` ran for this
+/// list, kept alongside the list so overview cards can show store count /
+/// savings without recomputing the optimizer.
+struct OptimizationSnapshot: Codable {
+    var chosenStores: [String]
+    var estimatedOneStoreTotal: Decimal
+    var optimizedTotal: Decimal
+    var savings: Decimal
+    var unpricedItemCount: Int
+    var optimizationDate: Date
 }
 
 struct ShoppingListItem: Codable, Identifiable {
@@ -298,6 +313,11 @@ struct ShoppingListItem: Codable, Identifiable {
     var isCompleted: Bool
     var notes: String?
     var addedAt: Date
+    /// The exact `PriceObservation` the optimizer (or a manual reassignment)
+    /// used to set `estimatedPrice`, distinct from `assignedStoreBranch`
+    /// (a display string) so a specific price record can be traced back to.
+    var selectedPriceObservationID: UUID?
+    var substituteCandidateNames: [String]?
 
     init(id: UUID = UUID(), listID: UUID, productName: String, requestedQuantity: String = "1") {
         self.id = id
@@ -311,6 +331,7 @@ struct ShoppingListItem: Codable, Identifiable {
 
 enum ListStatus: String, Codable {
     case active = "Active"
+    case planned = "Planned"
     case completed = "Completed"
     case archived = "Archived"
 }

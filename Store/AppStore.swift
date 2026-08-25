@@ -80,6 +80,18 @@ class AppStore {
         shoppingLists.filter { $0.status == .active }
     }
 
+    var plannedLists: [ShoppingList] {
+        shoppingLists.filter { $0.status == .planned }
+    }
+
+    var completedLists: [ShoppingList] {
+        shoppingLists.filter { $0.status == .completed }
+    }
+
+    var archivedLists: [ShoppingList] {
+        shoppingLists.filter { $0.status == .archived }
+    }
+
     var activeMemories: [AIMemory] {
         memories.filter { $0.isActive }
     }
@@ -808,6 +820,41 @@ class AppStore {
         return value > median * 1.5 || value < median * 0.5
     }
 
+    // MARK: - Shopping List Status
+
+    /// Moves a planned list into Active — the "Start Shopping" action on a
+    /// planned list's context menu.
+    func activateList(_ listID: UUID) {
+        guard let idx = shoppingLists.firstIndex(where: { $0.id == listID }) else { return }
+        shoppingLists[idx].status = .active
+        persistNow()
+    }
+
+    func completeShoppingList(_ listID: UUID) {
+        guard let idx = shoppingLists.firstIndex(where: { $0.id == listID }) else { return }
+        shoppingLists[idx].status = .completed
+        shoppingLists[idx].completedAt = Date()
+        persistNow()
+    }
+
+    func archiveShoppingList(_ listID: UUID) {
+        guard let idx = shoppingLists.firstIndex(where: { $0.id == listID }) else { return }
+        shoppingLists[idx].status = .archived
+        shoppingLists[idx].archivedAt = Date()
+        persistNow()
+    }
+
+    /// Reopens a completed or archived list as active, clearing the
+    /// timestamps that marked it done. Used for "reopen as template"-style
+    /// flows in the Shopping tab.
+    func reopenList(_ listID: UUID) {
+        guard let idx = shoppingLists.firstIndex(where: { $0.id == listID }) else { return }
+        shoppingLists[idx].status = .active
+        shoppingLists[idx].completedAt = nil
+        shoppingLists[idx].archivedAt = nil
+        persistNow()
+    }
+
     // MARK: - Shopping Optimization
 
     struct OptimizationResult {
@@ -859,10 +906,11 @@ class AppStore {
             var productName: String
             var storeName: String
             var price: Decimal
+            var observationID: UUID
         }
         var assignments: [ItemAssignment] = pendingItems.compactMap { item in
             guard let obs = bestObservation(productName: item.productName, branchID: baseline.branch.id) else { return nil }
-            return ItemAssignment(itemID: item.id, productName: item.productName, storeName: baseline.branch.displayName, price: obs.price)
+            return ItemAssignment(itemID: item.id, productName: item.productName, storeName: baseline.branch.displayName, price: obs.price, observationID: obs.id)
         }
 
         var selectedBranches: [StoreBranch] = [baseline.branch]
@@ -878,7 +926,7 @@ class AppStore {
                     if let cheaper = bestObservation(productName: updated[i].productName, branchID: branch.id),
                        cheaper.price < updated[i].price {
                         savings += updated[i].price - cheaper.price
-                        updated[i] = ItemAssignment(itemID: updated[i].itemID, productName: updated[i].productName, storeName: branch.displayName, price: cheaper.price)
+                        updated[i] = ItemAssignment(itemID: updated[i].itemID, productName: updated[i].productName, storeName: branch.displayName, price: cheaper.price, observationID: cheaper.id)
                     }
                 }
                 return savings > 0 ? (branch, updated, savings) : nil
@@ -902,20 +950,31 @@ class AppStore {
             if let a = assignmentMap[itemID] {
                 shoppingLists[idx].items[itemIdx].assignedStoreBranch = a.storeName
                 shoppingLists[idx].items[itemIdx].estimatedPrice = a.price
+                shoppingLists[idx].items[itemIdx].selectedPriceObservationID = a.observationID
             } else {
                 shoppingLists[idx].items[itemIdx].assignedStoreBranch = nil
                 shoppingLists[idx].items[itemIdx].estimatedPrice = nil
+                shoppingLists[idx].items[itemIdx].selectedPriceObservationID = nil
             }
         }
 
         let estimatedTotal = assignments.reduce(Decimal.zero) { $0 + $1.price }
         shoppingLists[idx].estimatedTotal = estimatedTotal
 
-        persistNow()
-
         let savings = baseline.total - currentTotal
         let storeNames = selectedBranches.map(\.displayName)
         let unassigned = pendingItems.count - assignments.count
+
+        shoppingLists[idx].optimizationSnapshot = OptimizationSnapshot(
+            chosenStores: storeNames,
+            estimatedOneStoreTotal: baseline.total,
+            optimizedTotal: estimatedTotal,
+            savings: savings,
+            unpricedItemCount: unassigned,
+            optimizationDate: Date()
+        )
+
+        persistNow()
 
         let explanation: String
         if selectedBranches.count == 1 {

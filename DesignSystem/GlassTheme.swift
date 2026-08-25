@@ -48,6 +48,12 @@ extension EnvironmentValues {
     /// `LIQUID_GLASS_REDESIGN_LOG.md`), so every tab explicitly reserves
     /// this amount of space itself.
     @Entry var floatingTabBarInset: CGFloat = 0
+
+    /// Lets a feature tab (Shopping, Prices, Meals) jump the user straight to
+    /// Chat — e.g. an "Ask AI" entry point on a tab's overview screen. Set by
+    /// `RootTabView` to its own tab-switching logic; defaults to a no-op so
+    /// previews and any view rendered outside `RootTabView` don't crash.
+    @Entry var switchToChatTab: () -> Void = {}
 }
 
 private struct ReservesFloatingTabBarSpace: ViewModifier {

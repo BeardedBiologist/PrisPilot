@@ -31,6 +31,10 @@ struct AddShoppingListSheet: View {
                     if hasPlannedDate {
                         DatePicker("Shopping date", selection: $plannedDate, displayedComponents: .date)
                     }
+                } footer: {
+                    if hasPlannedDate {
+                        Text("This list starts in Planned. Use \"Start Shopping\" when you're ready to work on it.")
+                    }
                 }
             }
             .navigationTitle("New List")
@@ -42,7 +46,10 @@ struct AddShoppingListSheet: View {
                         let trimmed = name.trimmingCharacters(in: .whitespaces)
                         guard !trimmed.isEmpty else { return }
                         var list = ShoppingList(name: trimmed, scope: scope)
-                        if hasPlannedDate { list.plannedDate = plannedDate }
+                        if hasPlannedDate {
+                            list.plannedDate = plannedDate
+                            list.status = .planned
+                        }
                         store.shoppingLists.append(list)
                         store.persistNow()
                         dismiss()

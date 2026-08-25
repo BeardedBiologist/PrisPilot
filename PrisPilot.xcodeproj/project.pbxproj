@@ -28,6 +28,7 @@
 		C4CCD189303753FB00157B4E /* ActionProposalView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4CCD188303753FB00157B4E /* ActionProposalView.swift */; };
 		C4CCD18B3037540300157B4E /* ActivityTagView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4CCD18A3037540300157B4E /* ActivityTagView.swift */; };
 		C4CCD18D3037541100157B4E /* ShoppingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4CCD18C3037541100157B4E /* ShoppingView.swift */; };
+		8C431DAC4E0B91AE06ACF959 /* ShoppingOverviewComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6F33978FF4323144CC8E191 /* ShoppingOverviewComponents.swift */; };
 		C4CCD18F3037541E00157B4E /* PricesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4CCD18E3037541E00157B4E /* PricesView.swift */; };
 		C4CCD1913037542900157B4E /* RecipesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4CCD1903037542900157B4E /* RecipesView.swift */; };
 		C4CCD1933037543700157B4E /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4CCD1923037543700157B4E /* SettingsView.swift */; };
@@ -85,6 +86,7 @@
 		C4CCD188303753FB00157B4E /* ActionProposalView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActionProposalView.swift; sourceTree = "<group>"; };
 		C4CCD18A3037540300157B4E /* ActivityTagView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityTagView.swift; sourceTree = "<group>"; };
 		C4CCD18C3037541100157B4E /* ShoppingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShoppingView.swift; sourceTree = "<group>"; };
+		D6F33978FF4323144CC8E191 /* ShoppingOverviewComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShoppingOverviewComponents.swift; sourceTree = "<group>"; };
 		C4CCD18E3037541E00157B4E /* PricesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PricesView.swift; sourceTree = "<group>"; };
 		C4CCD1903037542900157B4E /* RecipesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecipesView.swift; sourceTree = "<group>"; };
 		C4CCD1923037543700157B4E /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
@@ -267,6 +269,7 @@
 			isa = PBXGroup;
 			children = (
 				C4CCD18C3037541100157B4E /* ShoppingView.swift */,
+				D6F33978FF4323144CC8E191 /* ShoppingOverviewComponents.swift */,
 				C4CCD1A030375A4500157B4E /* ManualEntrySheets.swift */,
 			);
 			path = Shopping;
@@ -456,6 +459,7 @@
 				C4CCD1993037572800157B4E /* GeminiAPITypes.swift in Sources */,
 				C4CCD181303753AD00157B4E /* ChatModels.swift in Sources */,
 				C4CCD18D3037541100157B4E /* ShoppingView.swift in Sources */,
+				8C431DAC4E0B91AE06ACF959 /* ShoppingOverviewComponents.swift in Sources */,
 				C473BA1E3038623200C67296 /* AuthStore.swift in Sources */,
 				C4CCD19D3037583D00157B4E /* APIKeys.swift in Sources */,
 				C473BA1C3038622200C67296 /* AuthModels.swift in Sources */,

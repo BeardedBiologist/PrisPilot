@@ -4,26 +4,120 @@ import SwiftUI
 
 struct ShoppingView: View {
     @Environment(AppStore.self) private var store
+    @Environment(\.switchToChatTab) private var switchToChatTab
     @State private var showAddList = false
+    @State private var segment: ShoppingListSegment = .active
+    @State private var isOptimizingAll = false
     @Namespace private var heroSpace
 
+    private var listsForSegment: [ShoppingList] {
+        switch segment {
+        case .active: return store.activeLists
+        case .planned: return store.plannedLists
+        case .completed: return store.completedLists
+        case .archived: return store.archivedLists
+        }
+    }
+
     private var personalLists: [ShoppingList] {
-        store.activeLists.filter { $0.scope == .personal }
+        listsForSegment.filter { $0.scope == .personal }
     }
 
     private var householdLists: [ShoppingList] {
-        store.activeLists.filter { $0.scope == .household }
+        listsForSegment.filter { $0.scope == .household }
+    }
+
+    // MARK: Header summary (always computed from Active + Planned, regardless of selected segment)
+
+    private var nextPlannedDate: Date? {
+        (store.activeLists + store.plannedLists)
+            .compactMap(\.plannedDate)
+            .filter { $0 >= Calendar.current.startOfDay(for: Date()) }
+            .min()
+    }
+
+    private var activeEstimatedSpend: Decimal {
+        store.activeLists.reduce(Decimal.zero) { total, list in
+            total + list.items.filter { !$0.isCompleted }.compactMap(\.estimatedPrice).reduce(0, +)
+        }
+    }
+
+    private var activeMissingPriceCount: Int {
+        store.activeLists.reduce(0) { total, list in
+            total + list.items.filter { !$0.isCompleted && $0.estimatedPrice == nil }.count
+        }
     }
 
     var body: some View {
         NavigationStack {
-            Group {
-                if store.activeLists.isEmpty {
-                    emptyState
+            List {
+                Section {
+                    ShoppingSummaryHeader(
+                        activeCount: store.activeLists.count,
+                        nextPlannedDate: nextPlannedDate,
+                        estimatedSpend: activeEstimatedSpend,
+                        missingPriceCount: activeMissingPriceCount
+                    )
+                }
+                .listRowBackground(Color.clear)
+                .listRowInsets(EdgeInsets(top: 4, leading: 12, bottom: 4, trailing: 12))
+                .listRowSeparator(.hidden)
+
+                Section {
+                    Picker("View", selection: $segment) {
+                        ForEach(ShoppingListSegment.allCases) { Text($0.rawValue).tag($0) }
+                    }
+                    .pickerStyle(.segmented)
+                }
+                .listRowBackground(Color.clear)
+                .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 4, trailing: 16))
+                .listRowSeparator(.hidden)
+
+                Section {
+                    ShoppingPrimaryActionsRow(
+                        showOptimizeAll: segment == .active && !store.activeLists.isEmpty && !store.enabledBranches.isEmpty,
+                        isOptimizingAll: isOptimizingAll,
+                        onNewList: { showAddList = true },
+                        onOptimizeAll: optimizeAllActiveLists,
+                        onAskAI: { switchToChatTab() }
+                    )
+                }
+                .listRowBackground(Color.clear)
+                .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 8, trailing: 16))
+                .listRowSeparator(.hidden)
+
+                if listsForSegment.isEmpty {
+                    ContentUnavailableView(
+                        segment.emptyTitle,
+                        systemImage: segment.emptySystemImage,
+                        description: Text(segment.emptyDescription)
+                    )
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
                 } else {
-                    listContent
+                    if !personalLists.isEmpty {
+                        Section {
+                            ForEach(personalLists) { list in
+                                listRow(for: list)
+                            }
+                        } header: {
+                            if store.household != nil {
+                                Text("Personal")
+                            }
+                        }
+                    }
+
+                    if !householdLists.isEmpty {
+                        Section("Household") {
+                            ForEach(householdLists) { list in
+                                listRow(for: list)
+                            }
+                        }
+                    }
                 }
             }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
             .reservesFloatingTabBarSpace()
             .navigationTitle("Shopping")
             .toolbar {
@@ -38,40 +132,6 @@ struct ShoppingView: View {
                 AddShoppingListSheet().environment(store)
             }
         }
-    }
-
-    private var emptyState: some View {
-        ContentUnavailableView(
-            "No Shopping Lists",
-            systemImage: "cart",
-            description: Text("Create a list with the + button, or ask the AI in Chat.")
-        )
-    }
-
-    private var listContent: some View {
-        List {
-            if !personalLists.isEmpty {
-                Section {
-                    ForEach(personalLists) { list in
-                        listRow(for: list)
-                    }
-                } header: {
-                    if store.household != nil {
-                        Text("Personal")
-                    }
-                }
-            }
-
-            if !householdLists.isEmpty {
-                Section("Household") {
-                    ForEach(householdLists) { list in
-                        listRow(for: list)
-                    }
-                }
-            }
-        }
-        .listStyle(.plain)
-        .scrollContentBackground(.hidden)
     }
 
     private func listRow(for list: ShoppingList) -> some View {
@@ -93,11 +153,46 @@ struct ShoppingView: View {
 
     @ViewBuilder
     private func listContextMenu(for list: ShoppingList) -> some View {
+        switch list.status {
+        case .planned:
+            Button { store.activateList(list.id) } label: {
+                Label("Start Shopping", systemImage: "cart")
+            }
+        case .active:
+            Button { store.completeShoppingList(list.id) } label: {
+                Label("Mark Completed", systemImage: "checkmark.circle")
+            }
+            Button { store.archiveShoppingList(list.id) } label: {
+                Label("Archive", systemImage: "archivebox")
+            }
+        case .completed:
+            Button { store.archiveShoppingList(list.id) } label: {
+                Label("Archive", systemImage: "archivebox")
+            }
+            Button { store.reopenList(list.id) } label: {
+                Label("Reopen", systemImage: "arrow.uturn.backward")
+            }
+        case .archived:
+            Button { store.reopenList(list.id) } label: {
+                Label("Reopen", systemImage: "arrow.uturn.backward")
+            }
+        }
+
         Button(role: .destructive) {
             store.shoppingLists.removeAll { $0.id == list.id }
             store.persistNow()
         } label: {
             Label("Delete List", systemImage: "trash")
+        }
+    }
+
+    private func optimizeAllActiveLists() {
+        isOptimizingAll = true
+        Task { @MainActor in
+            for list in store.activeLists {
+                store.optimizeShoppingList(list.id)
+            }
+            isOptimizingAll = false
         }
     }
 }
@@ -116,7 +211,27 @@ struct ShoppingListCard: View {
         return prices.isEmpty ? nil : prices.reduce(0, +)
     }
 
+    private var missingPriceCount: Int {
+        list.items.filter { !$0.isCompleted && $0.estimatedPrice == nil }.count
+    }
+
     var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            mainRow
+            if showsBadgeRow {
+                badgeRow
+            }
+        }
+        .padding(16)
+        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 14))
+        .shadow(color: .black.opacity(0.05), radius: 4, x: 0, y: 2)
+    }
+
+    private var showsBadgeRow: Bool {
+        list.plannedDate != nil || list.optimizationSnapshot != nil || missingPriceCount > 0
+    }
+
+    private var mainRow: some View {
         HStack(alignment: .center, spacing: 16) {
             // Progress ring
             ZStack {
@@ -170,9 +285,46 @@ struct ShoppingListCard: View {
                 }
             }
         }
-        .padding(16)
-        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 14))
-        .shadow(color: .black.opacity(0.05), radius: 4, x: 0, y: 2)
+    }
+
+    @ViewBuilder
+    private var badgeRow: some View {
+        HStack(spacing: 6) {
+            if let plannedDate = list.plannedDate {
+                badge(
+                    text: plannedDate.formatted(.relative(presentation: .named)),
+                    systemImage: "calendar",
+                    color: .purple
+                )
+            }
+
+            if let snapshot = list.optimizationSnapshot {
+                if snapshot.chosenStores.count > 1 {
+                    badge(text: "\(snapshot.chosenStores.count) stores", systemImage: "storefront", color: .blue)
+                } else if let store = snapshot.chosenStores.first {
+                    badge(text: store, systemImage: "storefront", color: .blue)
+                }
+                if snapshot.savings > 0 {
+                    badge(text: "Saves kr \(formatDecimal(snapshot.savings))", systemImage: "arrow.down.circle.fill", color: .green)
+                }
+            }
+
+            if missingPriceCount > 0 {
+                badge(text: "\(missingPriceCount) need\(missingPriceCount == 1 ? "s" : "") price", systemImage: "exclamationmark.circle.fill", color: .orange)
+            }
+
+            Spacer(minLength: 0)
+        }
+    }
+
+    private func badge(text: String, systemImage: String, color: Color) -> some View {
+        Label(text, systemImage: systemImage)
+            .font(.caption2.weight(.medium))
+            .lineLimit(1)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(color.opacity(0.15), in: Capsule())
+            .foregroundStyle(color)
     }
 
     private func formatDecimal(_ d: Decimal) -> String {
