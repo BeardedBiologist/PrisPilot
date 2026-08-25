@@ -19,6 +19,7 @@ struct PrisPilotApp: App {
             RootTabView()
                 .environment(AppStore.shared)
                 .environment(AuthStore.shared)
+                .appliesAppearanceMode()
         }
         .modelContainer(modelContainer)
     }

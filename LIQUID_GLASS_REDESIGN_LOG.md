@@ -4,6 +4,40 @@ Companion to `LIQUID_GLASS_REDESIGN_PLAN.md`. Append an entry per work session/p
 
 ---
 
+## 2026-08-25 16:54 CEST — Fix: Appearance picker toggled but theme stayed white
+
+**Reported by Josh:** the new Appearance segmented control switches selection fine (confirms `@AppStorage` read/write works), but the app's actual rendered theme never changes — stays white regardless of Light/Dark/Auto.
+
+**Fix:** `.preferredColorScheme(_:)` alone is the documented/standard approach and was applied correctly at the true app root (`WindowGroup`'s content in `PrisPilotApp.swift`), but evidently isn't reliably reaching the actual `UIWindow` trait through this app's now-deep custom view hierarchy (the `GlassEffectContainer`/`ZStack`/`safeAreaInset` layering this session's redesign introduced). Added a second, OS-level mechanism alongside it in `DesignSystem/AppearanceMode.swift`'s `AppearanceModeModifier`: `.onAppear`/`.onChange(of: appearanceModeRaw)` now directly set `overrideUserInterfaceStyle` on every window in every connected `UIWindowScene`. That operates beneath SwiftUI entirely, so it can't be missed by environment-propagation quirks — belt-and-suspenders alongside the existing `.preferredColorScheme` call (kept, since it's still what drives `@Environment(\.colorScheme)` reads in SwiftUI code like `ChatSurfaceBackground`).
+
+**Verification:** `xcodebuild build`, compile-only, green. **Not yet re-verified on-device** — same standing caveat.
+
+### What's next
+- Josh to re-test: toggle Light/Dark/Auto again and confirm the app actually re-themes this time.
+
+---
+
+## 2026-08-25 16:49 CEST — Feature add: Appearance (Light/Dark/Auto) setting, plus a small button-color swap
+
+Two requests from Josh, outside the phase plan itself:
+
+**Onboarding button colors swapped:** "Set up manually" was `.glassProminent` (accent), "Set up with AI in Chat" was `.glass` (plain) — Josh wants the accent on the AI option instead, same order. Swapped the two `.buttonStyle()` calls in `welcomeStep` (`Features/Onboarding/OnboardingView.swift`); no other change.
+
+**New Appearance setting:** Josh reported the app "is all white" and asked for an explicit Light/Dark/Auto toggle plus system-following behavior. Checked first — nothing in the codebase forces light mode (no `.preferredColorScheme`, no `UIUserInterfaceStyle` in the build settings); the app should already have been following the system appearance automatically. Likely Josh's device/simulator was just in light mode. Added the explicit control anyway since it's a reasonable ask on its own (lets him force dark mode to actually check it, which he can't otherwise verify without me being able to see his screen) and is a genuinely reasonable feature regardless.
+
+- **`DesignSystem/AppearanceMode.swift`** (new file): `AppearanceMode` enum (`.system`/`.light`/`.dark`) with a `colorScheme: ColorScheme?` (`nil` for `.system`) and a `View.appliesAppearanceMode()` modifier that reads the choice via `@AppStorage("appearanceMode")` and applies `.preferredColorScheme(_:)`.
+- **Deliberately did not add this to `AppSettings`/`AppStoreSnapshot`** (the `Codable` struct `AppStore` persists via SwiftData). `AppStoreSnapshot.init(from:)` in `Store/SwiftDataPersistence.swift` already shows the project's own established pattern for schema evolution — new fields go through `decodeIfPresent(...) ?? default` so old saved data keeps decoding — but `AppSettings` itself has no custom `init(from:)`, only compiler-synthesized `Codable`, which does *not* tolerate a missing key for a plain non-optional stored property. Adding a required field there risked breaking decode of Josh's already-persisted local settings. `@AppStorage` (plain `UserDefaults`, keyed independently) sidesteps that risk entirely and is also the pattern `swiftui-patterns` recommends for exactly this kind of lightweight per-device preference — "keep `@AppStorage` in a View," not inside an `@Observable` model.
+- **`App/PrisPilotApp.swift`**: `.appliesAppearanceMode()` applied once, directly on `RootTabView()` inside `WindowGroup` — the true app root, so every sheet/`fullScreenCover` throughout the app inherits it (SwiftUI presentations inherit environment from their presenting view by default).
+- **`Features/Settings/SettingsView.swift`**: new "Appearance" `Section` with a 3-option `.segmented` `Picker` (System/Light/Dark → labeled "Auto"/"Light"/"Dark"), placed right after the account card. Its own `@AppStorage("appearanceMode")` reads/writes the same key, so it stays in sync with the app-root modifier automatically — no manual plumbing needed between the two.
+
+**Verification:** `xcodebuild build`, compile-only, green. **Not verified on-device** — same standing caveat as everything else this session.
+
+### What's next
+- Josh to test: switch the new Appearance picker to Dark and confirm the whole app (including Chat's existing dark-mode gradient background, which was already implemented but presumably never seen live) actually looks right in dark mode — this is the first real chance to see any of this session's dark-mode-aware code (`ChatSurfaceBackground`, `ActivityTagView`'s `colorScheme`-based foreground) rendered live.
+- Phase 6 (accessibility/performance verification) from the plan is still outstanding and still needs Josh's device.
+
+---
+
 ## 2026-08-25 16:43 CEST — Phase 5 (Settings & Onboarding) implemented
 
 All of `LIQUID_GLASS_REDESIGN_PLAN.md` §9 done. Compiles clean (`xcodebuild build`, compile-only). **Not yet verified on-device** — Phases 2–5 have all landed back-to-back without an on-device check yet, per Josh's "keep going" instructions this session.

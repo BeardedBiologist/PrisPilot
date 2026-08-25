@@ -5,11 +5,19 @@ import MapKit
 struct SettingsView: View {
     @Environment(AppStore.self) private var store
     @Environment(AuthStore.self) private var authStore
+    @AppStorage("appearanceMode") private var appearanceModeRaw: String = AppearanceMode.system.rawValue
     @State private var showSignIn = false
     @State private var showOnboarding = false
     @State private var exportURL: URL?
     @State private var exportError: String?
     @State private var showDeleteAllConfirmation = false
+
+    private var appearanceMode: Binding<AppearanceMode> {
+        Binding(
+            get: { AppearanceMode(rawValue: appearanceModeRaw) ?? .system },
+            set: { appearanceModeRaw = $0.rawValue }
+        )
+    }
 
     var body: some View {
         NavigationStack {
@@ -23,6 +31,15 @@ struct SettingsView: View {
                     if !authStore.state.isSignedIn {
                         Text("Sign in to sync across devices and share with your household.")
                     }
+                }
+
+                Section("Appearance") {
+                    Picker("Appearance", selection: appearanceMode) {
+                        ForEach(AppearanceMode.allCases) { mode in
+                            Text(mode.label).tag(mode)
+                        }
+                    }
+                    .pickerStyle(.segmented)
                 }
 
                 Section("Region") {
