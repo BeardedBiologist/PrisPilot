@@ -393,6 +393,18 @@ struct AssistantAvatar: View {
 
 struct MemoryListView: View {
     @Environment(AppStore.self) private var store
+    @State private var editingMemory: AIMemory?
+
+    private var grouped: [(scope: DataScope, groups: [(category: MemoryCategory, memories: [AIMemory])])] {
+        [DataScope.personal, DataScope.household].compactMap { scope in
+            let scopedMemories = store.activeMemories.filter { $0.scope == scope }
+            let groups = MemoryCategory.allCases.compactMap { cat in
+                let items = scopedMemories.filter { $0.category == cat }
+                return items.isEmpty ? nil : (category: cat, memories: items)
+            }
+            return groups.isEmpty ? nil : (scope: scope, groups: groups)
+        }
+    }
 
     var body: some View {
         List {
@@ -403,24 +415,144 @@ struct MemoryListView: View {
                     description: Text("As you use the app, I'll remember your preferences here.")
                 )
             } else {
-                ForEach(store.activeMemories) { memory in
-                    VStack(alignment: .leading, spacing: 4) {
-                        HStack {
-                            Image(systemName: memory.category.systemImage)
-                                .foregroundStyle(.purple)
-                            Text(memory.category.rawValue)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                ForEach(grouped, id: \.scope) { scopeGroup in
+                    ForEach(scopeGroup.groups, id: \.category) { group in
+                        Section {
+                            ForEach(group.memories) { memory in
+                                Button {
+                                    editingMemory = memory
+                                } label: {
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text(memory.summary)
+                                            .font(.subheadline)
+                                            .foregroundStyle(.primary)
+                                        HStack(spacing: 6) {
+                                            Text(memory.strength.rawValue)
+                                                .font(.caption2)
+                                                .padding(.horizontal, 6)
+                                                .padding(.vertical, 2)
+                                                .background(Color.purple.opacity(0.12), in: Capsule())
+                                                .foregroundStyle(.purple)
+                                            Text(memory.createdAt.formatted(date: .abbreviated, time: .omitted))
+                                                .font(.caption2)
+                                                .foregroundStyle(.tertiary)
+                                        }
+                                    }
+                                    .padding(.vertical, 2)
+                                }
+                                .buttonStyle(.plain)
+                                .swipeActions(edge: .trailing) {
+                                    Button(role: .destructive) {
+                                        store.deleteMemory(memory.id)
+                                    } label: {
+                                        Label("Delete", systemImage: "trash")
+                                    }
+                                }
+                            }
+                        } header: {
+                            Label("\(scopeGroup.scope.rawValue) · \(group.category.rawValue)", systemImage: group.category.systemImage)
                         }
-                        Text(memory.summary)
-                            .font(.subheadline)
                     }
-                    .padding(.vertical, 4)
                 }
             }
         }
         .navigationTitle("AI Memory")
         .navigationBarTitleDisplayMode(.large)
+        .sheet(item: $editingMemory) { memory in
+            MemoryEditSheet(memory: memory)
+                .environment(store)
+        }
+    }
+}
+
+struct MemoryEditSheet: View {
+    @Environment(AppStore.self) private var store
+    @Environment(\.dismiss) private var dismiss
+
+    let memory: AIMemory
+
+    @State private var summary: String
+    @State private var category: MemoryCategory
+    @State private var strength: ConstraintStrength
+    @State private var sensitivityLevel: SensitivityLevel
+    @State private var showDeleteConfirmation = false
+
+    init(memory: AIMemory) {
+        self.memory = memory
+        _summary = State(initialValue: memory.summary)
+        _category = State(initialValue: memory.category)
+        _strength = State(initialValue: memory.strength)
+        _sensitivityLevel = State(initialValue: memory.sensitivityLevel)
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Memory") {
+                    TextField("Summary", text: $summary, axis: .vertical)
+                        .lineLimit(3...8)
+                }
+
+                Section("Classification") {
+                    Picker("Category", selection: $category) {
+                        ForEach(MemoryCategory.allCases, id: \.self) { cat in
+                            Label(cat.rawValue, systemImage: cat.systemImage).tag(cat)
+                        }
+                    }
+                    Picker("Strength", selection: $strength) {
+                        ForEach(ConstraintStrength.allCases, id: \.self) { s in
+                            Text(s.rawValue).tag(s)
+                        }
+                    }
+                    Picker("Sensitivity", selection: $sensitivityLevel) {
+                        ForEach(SensitivityLevel.allCases, id: \.self) { s in
+                            Text(s.rawValue).tag(s)
+                        }
+                    }
+                }
+
+                Section {
+                    LabeledContent("Saved", value: memory.createdAt.formatted(date: .abbreviated, time: .shortened))
+                }
+
+                Section {
+                    Button(role: .destructive) {
+                        showDeleteConfirmation = true
+                    } label: {
+                        Label("Delete memory", systemImage: "trash")
+                    }
+                }
+            }
+            .navigationTitle("Edit Memory")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        store.updateMemory(
+                            memory.id,
+                            summary: summary.trimmingCharacters(in: .whitespacesAndNewlines),
+                            category: category,
+                            strength: strength,
+                            sensitivityLevel: sensitivityLevel
+                        )
+                        dismiss()
+                    }
+                    .disabled(summary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
+            .confirmationDialog("Delete Memory", isPresented: $showDeleteConfirmation) {
+                Button("Delete", role: .destructive) {
+                    store.deleteMemory(memory.id)
+                    dismiss()
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("This memory will be permanently removed.")
+            }
+        }
     }
 }
 

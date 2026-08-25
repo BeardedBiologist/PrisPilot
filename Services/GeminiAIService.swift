@@ -3,7 +3,7 @@ import Foundation
 // Gemini Developer API via REST — no SDK dependency needed.
 // Key is read from Keychain; never embedded in source.
 
-final class GeminiAIService: AIService, OnboardingAIService {
+final class GeminiAIService: AIService, OnboardingAIService, ReceiptParsingAIService {
     let providerName: String
     var isAvailable: Bool = true
 
@@ -201,6 +201,62 @@ final class GeminiAIService: AIService, OnboardingAIService {
             "generationConfig": [
                 "temperature": 0.2,
                 "maxOutputTokens": 2048,
+                "responseMimeType": "application/json"
+            ]
+        ]
+        return try JSONSerialization.data(withJSONObject: body)
+    }
+
+    // MARK: - Receipt Parsing
+
+    func parseReceiptLines(rawLines: [String], knownProducts: [Product]) async throws -> ParsedReceipt {
+        let body = try buildReceiptParsingRequestBody(rawLines: rawLines, knownProducts: knownProducts)
+        let geminiResponse = try await generateContentWithFallback(body: body)
+
+        guard let text = geminiResponse.candidates?.first?.content?.parts.compactMap(\.text).joined(),
+              let jsonData = text.data(using: .utf8) else {
+            throw AIServiceError.invalidResponse
+        }
+
+        let decoded = try JSONDecoder().decode(GeminiReceiptParse.self, from: jsonData)
+        return decoded.parsedReceipt(knownProducts: knownProducts)
+    }
+
+    private func buildReceiptParsingRequestBody(rawLines: [String], knownProducts: [Product]) throws -> Data {
+        let productNames = knownProducts
+            .map(\.name)
+            .sorted()
+            .prefix(80)
+            .joined(separator: ", ")
+
+        let prompt = """
+        You are parsing OCR text from a Norwegian grocery receipt. Return only valid JSON.
+
+        OCR lines:
+        \(rawLines.enumerated().map { "\($0.offset + 1). \($0.element)" }.joined(separator: "\n"))
+
+        Known product names in the app:
+        \(productNames.isEmpty ? "None" : productNames)
+
+        Extract grocery line items only. Ignore totals, payment lines, tax/MVA, receipt metadata, phone numbers, and organisation numbers.
+        Prefer a known product name when it clearly matches an OCR item. Keep the original OCR line in rawText.
+        Prices are NOK decimal numbers. Use null for productName or price if a line cannot be confidently parsed.
+        Infer the supermarket chain or branch from receipt header text when possible.
+
+        Return JSON matching this schema:
+        {
+          "inferredStoreName": "Kiwi" | "Rema 1000" | "Meny" | null,
+          "lines": [
+            { "rawText": "MELK 1L 22,90", "productName": "Milk", "price": 22.90, "include": true }
+          ]
+        }
+        """
+
+        let body: [String: Any] = [
+            "contents": [["role": "user", "parts": [["text": prompt]]]],
+            "generationConfig": [
+                "temperature": 0.1,
+                "maxOutputTokens": 4096,
                 "responseMimeType": "application/json"
             ]
         ]
@@ -696,4 +752,62 @@ private struct GeminiOnboardingProduct: Decodable {
     let name: String?
     let category: String?
     let unit: String?
+}
+
+private struct GeminiReceiptParse: Decodable {
+    let inferredStoreName: String?
+    let lines: [GeminiReceiptLine]
+
+    func parsedReceipt(knownProducts: [Product]) -> ParsedReceipt {
+        let receiptLines = lines.map { line in
+            let matchedProduct = line.productName.flatMap { productName in
+                knownProducts.first { $0.name.localizedCaseInsensitiveCompare(productName) == .orderedSame }
+            }
+            let productName = matchedProduct?.name ?? line.productName
+            return ReceiptLine(
+                rawText: line.rawText,
+                productName: productName,
+                matchedProductID: matchedProduct?.id,
+                price: line.price.map { Decimal($0) },
+                isIncluded: line.include && productName != nil && line.price != nil
+            )
+        }
+
+        return ParsedReceipt(
+            inferredStoreName: inferredStoreName?.nilIfBlank,
+            observedDate: Date(),
+            lines: receiptLines
+        )
+    }
+}
+
+private struct GeminiReceiptLine: Decodable {
+    let rawText: String
+    let productName: String?
+    let price: Double?
+    let include: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case rawText
+        case raw_text
+        case productName
+        case product_name
+        case price
+        case include
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        rawText = try container.decodeFirstPresentString(for: [.rawText, .raw_text]) ?? ""
+        productName = try container.decodeFirstPresentString(for: [.productName, .product_name])
+        price = try container.decodeIfPresent(Double.self, forKey: .price)
+        include = try container.decodeIfPresent(Bool.self, forKey: .include) ?? (productName != nil && price != nil)
+    }
+}
+
+private extension String {
+    var nilIfBlank: String? {
+        let trimmed = trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
 }

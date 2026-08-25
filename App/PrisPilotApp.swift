@@ -1,10 +1,3 @@
-//
-//  PrisPilotApp.swift
-//  PrisPilot
-//
-//  Created by Joshua James O’Connor on 20/08/2026.
-//
-
 import SwiftData
 import SwiftUI
 
@@ -25,6 +18,7 @@ struct PrisPilotApp: App {
         WindowGroup {
             RootTabView()
                 .environment(AppStore.shared)
+                .environment(AuthStore.shared)
         }
         .modelContainer(modelContainer)
     }

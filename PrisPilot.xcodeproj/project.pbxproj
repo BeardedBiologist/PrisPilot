@@ -9,6 +9,12 @@
 /* Begin PBXBuildFile section */
 		C45E009230377ABD0021D7F2 /* OnboardingFlow.swift in Sources */ = {isa = PBXBuildFile; fileRef = C45E009130377ABD0021D7F2 /* OnboardingFlow.swift */; };
 		C45E0094303782730021D7F2 /* SwiftDataPersistence.swift in Sources */ = {isa = PBXBuildFile; fileRef = C45E0093303782730021D7F2 /* SwiftDataPersistence.swift */; };
+		C473BA1C3038622200C67296 /* AuthModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = C473BA1B3038622200C67296 /* AuthModels.swift */; };
+		C473BA1E3038623200C67296 /* AuthStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = C473BA1D3038623200C67296 /* AuthStore.swift */; };
+		C473BA203038624500C67296 /* AccountView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C473BA1F3038624500C67296 /* AccountView.swift */; };
+		C473BA2230386BC100C67296 /* BUILD_STATUS.md in Resources */ = {isa = PBXBuildFile; fileRef = C473BA2130386BC100C67296 /* BUILD_STATUS.md */; };
+		C473BA253038846300C67296 /* BarcodeScannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C473BA243038846300C67296 /* BarcodeScannerView.swift */; };
+		C473BA273038848900C67296 /* ReceiptScannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C473BA263038848900C67296 /* ReceiptScannerView.swift */; };
 		C4CCD1773037534300157B4E /* AppModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4CCD1763037534300157B4E /* AppModels.swift */; };
 		C4CCD1793037535000157B4E /* AITypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4CCD1783037535000157B4E /* AITypes.swift */; };
 		C4CCD17B3037536B00157B4E /* ProposedAction.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4CCD17A3037536B00157B4E /* ProposedAction.swift */; };
@@ -55,6 +61,12 @@
 /* Begin PBXFileReference section */
 		C45E009130377ABD0021D7F2 /* OnboardingFlow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingFlow.swift; sourceTree = "<group>"; };
 		C45E0093303782730021D7F2 /* SwiftDataPersistence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftDataPersistence.swift; sourceTree = "<group>"; };
+		C473BA1B3038622200C67296 /* AuthModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthModels.swift; sourceTree = "<group>"; };
+		C473BA1D3038623200C67296 /* AuthStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthStore.swift; sourceTree = "<group>"; };
+		C473BA1F3038624500C67296 /* AccountView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountView.swift; sourceTree = "<group>"; };
+		C473BA2130386BC100C67296 /* BUILD_STATUS.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = BUILD_STATUS.md; sourceTree = "<group>"; };
+		C473BA243038846300C67296 /* BarcodeScannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarcodeScannerView.swift; sourceTree = "<group>"; };
+		C473BA263038848900C67296 /* ReceiptScannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReceiptScannerView.swift; sourceTree = "<group>"; };
 		C4ACBAF930374FA900D1D068 /* PrisPilot.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PrisPilot.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		C4ACBB0830374FAC00D1D068 /* PrisPilotTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PrisPilotTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		C4ACBB1230374FAC00D1D068 /* PrisPilotUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PrisPilotUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -128,6 +140,15 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		C473BA233038844900C67296 /* Scanner */ = {
+			isa = PBXGroup;
+			children = (
+				C473BA243038846300C67296 /* BarcodeScannerView.swift */,
+				C473BA263038848900C67296 /* ReceiptScannerView.swift */,
+			);
+			path = Scanner;
+			sourceTree = "<group>";
+		};
 		C4ACBAF030374FA900D1D068 = {
 			isa = PBXGroup;
 			children = (
@@ -141,6 +162,7 @@
 				C4D878983037919C002CD76D /* Store */,
 				C4D878993037919D002CD76D /* Services */,
 				C4D8789A3037919E002CD76D /* Features */,
+				C473BA2130386BC100C67296 /* BUILD_STATUS.md */,
 			);
 			sourceTree = "<group>";
 		};
@@ -171,6 +193,7 @@
 				C4CCD17A3037536B00157B4E /* ProposedAction.swift */,
 				C4CCD180303753AD00157B4E /* ChatModels.swift */,
 				C4CCD1983037572800157B4E /* GeminiAPITypes.swift */,
+				C473BA1B3038622200C67296 /* AuthModels.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -180,6 +203,7 @@
 			children = (
 				C4CCD17E303753A700157B4E /* AppStore.swift */,
 				C45E0093303782730021D7F2 /* SwiftDataPersistence.swift */,
+				C473BA1D3038623200C67296 /* AuthStore.swift */,
 			);
 			path = Store;
 			sourceTree = "<group>";
@@ -204,6 +228,7 @@
 				C4D8789E303791A1002CD76D /* Prices */,
 				C4D8789F303791A1002CD76D /* Recipes */,
 				C4D878A0303791A2002CD76D /* Settings */,
+				C473BA233038844900C67296 /* Scanner */,
 			);
 			path = Features;
 			sourceTree = "<group>";
@@ -259,6 +284,7 @@
 			isa = PBXGroup;
 			children = (
 				C4CCD1923037543700157B4E /* SettingsView.swift */,
+				C473BA1F3038624500C67296 /* AccountView.swift */,
 			);
 			path = Settings;
 			sourceTree = "<group>";
@@ -383,6 +409,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				C473BA2230386BC100C67296 /* BUILD_STATUS.md in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -407,22 +434,27 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				C473BA253038846300C67296 /* BarcodeScannerView.swift in Sources */,
 				C4CCD17D3037538E00157B4E /* MockAIService.swift in Sources */,
 				C4CCD1913037542900157B4E /* RecipesView.swift in Sources */,
 				C4CCD1793037535000157B4E /* AITypes.swift in Sources */,
 				C4CCD1933037543700157B4E /* SettingsView.swift in Sources */,
 				C4CCD187303753E700157B4E /* MessageBubbleView.swift in Sources */,
 				C4CCD1973037571D00157B4E /* KeychainService.swift in Sources */,
+				C473BA203038624500C67296 /* AccountView.swift in Sources */,
 				C4CCD1993037572800157B4E /* GeminiAPITypes.swift in Sources */,
 				C4CCD181303753AD00157B4E /* ChatModels.swift in Sources */,
 				C4CCD18D3037541100157B4E /* ShoppingView.swift in Sources */,
+				C473BA1E3038623200C67296 /* AuthStore.swift in Sources */,
 				C4CCD19D3037583D00157B4E /* APIKeys.swift in Sources */,
+				C473BA1C3038622200C67296 /* AuthModels.swift in Sources */,
 				C4CCD1A130375A4500157B4E /* ManualEntrySheets.swift in Sources */,
 				C4CCD1953037543C00157B4E /* RootTabView.swift in Sources */,
 				C4CCD185303753DC00157B4E /* ChatView.swift in Sources */,
 				C4CCD1A330375A5E00157B4E /* PriceComparisonView.swift in Sources */,
 				C4D8788F3037897E002CD76D /* PrisPilotApp.swift in Sources */,
 				C4CCD1773037534300157B4E /* AppModels.swift in Sources */,
+				C473BA273038848900C67296 /* ReceiptScannerView.swift in Sources */,
 				C4CCD189303753FB00157B4E /* ActionProposalView.swift in Sources */,
 				C45E0094303782730021D7F2 /* SwiftDataPersistence.swift in Sources */,
 				C4CCD17B3037536B00157B4E /* ProposedAction.swift in Sources */,
@@ -597,6 +629,7 @@
 				DEVELOPMENT_TEAM = G998QE6WG8;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSCameraUsageDescription = "PrisPilot uses the camera to scan barcodes and receipts.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -629,6 +662,7 @@
 				DEVELOPMENT_TEAM = G998QE6WG8;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSCameraUsageDescription = "PrisPilot uses the camera to scan barcodes and receipts.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;

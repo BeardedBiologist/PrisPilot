@@ -22,6 +22,10 @@ protocol OnboardingAIService {
     ) async throws -> OnboardingAIResult
 }
 
+protocol ReceiptParsingAIService {
+    func parseReceiptLines(rawLines: [String], knownProducts: [Product]) async throws -> ParsedReceipt
+}
+
 // MARK: - AI Message
 
 struct AIMessage: Codable {

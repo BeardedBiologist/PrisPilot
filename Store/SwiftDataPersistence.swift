@@ -20,9 +20,12 @@ struct AppStoreSnapshot: Codable {
     var branches: [StoreBranch]
     var products: [Product]
     var priceObservations: [PriceObservation]
+    var communityContributions: [CommunityContribution]
     var shoppingLists: [ShoppingList]
     var recipes: [Recipe]
     var memories: [AIMemory]
+    var household: Household?
+    var invitations: [Invitation]
     var chatSessions: [ChatSessionSnapshot]
     var selectedChatSessionID: UUID?
     var onboardingAnswers: [OnboardingQuestionID: String]
@@ -34,12 +37,50 @@ struct AppStoreSnapshot: Codable {
         branches = store.branches
         products = store.products
         priceObservations = store.priceObservations
+        communityContributions = store.communityContributions
         shoppingLists = store.shoppingLists
         recipes = store.recipes
         memories = store.memories
+        household = store.household
+        invitations = store.invitations
         chatSessions = store.chatSessions.map(ChatSessionSnapshot.init(session:))
         selectedChatSessionID = store.selectedChatSessionID
         onboardingAnswers = store.onboardingAnswers
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case settings
+        case chains
+        case branches
+        case products
+        case priceObservations
+        case communityContributions
+        case shoppingLists
+        case recipes
+        case memories
+        case household
+        case invitations
+        case chatSessions
+        case selectedChatSessionID
+        case onboardingAnswers
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        settings = try container.decode(AppSettings.self, forKey: .settings)
+        chains = try container.decode([SupermarketChain].self, forKey: .chains)
+        branches = try container.decode([StoreBranch].self, forKey: .branches)
+        products = try container.decode([Product].self, forKey: .products)
+        priceObservations = try container.decode([PriceObservation].self, forKey: .priceObservations)
+        communityContributions = try container.decodeIfPresent([CommunityContribution].self, forKey: .communityContributions) ?? []
+        shoppingLists = try container.decode([ShoppingList].self, forKey: .shoppingLists)
+        recipes = try container.decode([Recipe].self, forKey: .recipes)
+        memories = try container.decode([AIMemory].self, forKey: .memories)
+        household = try container.decodeIfPresent(Household.self, forKey: .household)
+        invitations = try container.decodeIfPresent([Invitation].self, forKey: .invitations) ?? []
+        chatSessions = try container.decode([ChatSessionSnapshot].self, forKey: .chatSessions)
+        selectedChatSessionID = try container.decodeIfPresent(UUID.self, forKey: .selectedChatSessionID)
+        onboardingAnswers = try container.decodeIfPresent([OnboardingQuestionID: String].self, forKey: .onboardingAnswers) ?? [:]
     }
 }
 

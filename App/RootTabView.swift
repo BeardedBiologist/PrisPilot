@@ -37,6 +37,9 @@ struct RootTabView: View {
                 }
             }
         }
+        .task {
+            await AuthStore.shared.checkExistingCredential()
+        }
         .onChange(of: scenePhase) { _, phase in
             if phase != .active {
                 store.persistNow()
@@ -139,4 +142,5 @@ struct MainChatTabIcon: View {
 #Preview {
     RootTabView()
         .environment(AppStore.shared)
+        .environment(AuthStore.shared)
 }

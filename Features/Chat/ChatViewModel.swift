@@ -118,6 +118,7 @@ class ChatViewModel {
         var tags: [ActivityTag] = []
         for action in result.proposedActions {
             var executableAction = action
+            executableAction.validationResult = appStore.validate(executableAction)
             if let ids = try? appStore.execute(executableAction) {
                 executableAction.resultingRecordIDs = ids
                 executableAction.status = .completed
@@ -138,6 +139,7 @@ class ChatViewModel {
                 requiresConfirmation: false
             )
             var executableAction = action
+            executableAction.validationResult = appStore.validate(executableAction)
             if let ids = try? appStore.execute(executableAction) {
                 executableAction.resultingRecordIDs = ids
                 executableAction.status = .completed
@@ -166,6 +168,11 @@ class ChatViewModel {
         var tags: [ActivityTag] = []
 
         for i in 0..<actions.count where actions[i].status == .pending {
+            actions[i].validationResult = appStore.validate(actions[i])
+            guard actions[i].validationResult.isValid else {
+                actions[i].status = .failed
+                continue
+            }
             actions[i].status = .executing
             if let ids = try? appStore.execute(actions[i]) {
                 actions[i].resultingRecordIDs = ids
@@ -187,9 +194,12 @@ class ChatViewModel {
                     sensitivityLevel: proposal.memory.sensitivityLevel
                 )
             )
-            if let _ = try? appStore.execute(memAction) {
-                let tag = ActivityTag(from: memAction)
-                tags.append(tag)
+            var executableAction = memAction
+            executableAction.validationResult = appStore.validate(executableAction)
+            if let ids = try? appStore.execute(executableAction) {
+                executableAction.resultingRecordIDs = ids
+                executableAction.status = .completed
+                tags.append(ActivityTag(from: executableAction))
             }
         }
 
@@ -202,6 +212,15 @@ class ChatViewModel {
               case .proposedActions(let intro, var actions, let memoryProposals) = message.content,
               let actIdx = actions.firstIndex(where: { $0.id == actionID })
         else { return }
+
+        actions[actIdx].validationResult = appStore.validate(actions[actIdx])
+        guard actions[actIdx].validationResult.isValid else {
+            actions[actIdx].status = .failed
+            let content = ChatMessageContent.proposedActions(intro: intro, actions: actions, memoryProposals: memoryProposals)
+            appStore.replaceMessage(messageID, in: sessionID, with: content)
+            collapseIfAllTerminal(messageID: messageID, sessionID: sessionID)
+            return
+        }
 
         actions[actIdx].status = .executing
         if let ids = try? appStore.execute(actions[actIdx]) {
@@ -250,11 +269,16 @@ class ChatViewModel {
         }
 
         if !response.proposedActions.isEmpty || !response.memoryProposals.isEmpty {
+            let actions = response.proposedActions.map { action in
+                var validated = action
+                validated.validationResult = appStore.validate(action)
+                return validated
+            }
             appStore.appendMessage(ChatMessage(
                 role: .assistant,
                 content: .proposedActions(
                     intro: response.textContent,
-                    actions: response.proposedActions,
+                    actions: actions,
                     memoryProposals: response.memoryProposals
                 )
             ), to: sessionID)
@@ -283,9 +307,16 @@ class ChatViewModel {
     }
 
     private func buildContext() -> AIContext {
-        AIContext(
-            relevantMemories: Array(appStore.activeMemories.prefix(10)),
-            availableShoppingLists: appStore.activeLists.map { $0.name },
+        let scopedMemories = appStore.activeMemories.filter { memory in
+            memory.scope == .personal || (memory.scope == .household && appStore.household != nil)
+        }
+        let scopedLists = appStore.activeLists.map { list in
+            "\(list.name) (\(list.scope.rawValue))"
+        }
+
+        return AIContext(
+            relevantMemories: Array(scopedMemories.prefix(10)),
+            availableShoppingLists: scopedLists,
             enabledStoreBranches: appStore.branches.map { "\($0.displayName) (\($0.isEnabled ? "enabled" : "disabled"))" },
             userPreferences: "",
             currency: appStore.settings.currency

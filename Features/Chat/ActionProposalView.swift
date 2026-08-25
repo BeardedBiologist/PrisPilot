@@ -125,6 +125,7 @@ struct ActionRow: View {
                 Text(action.type.displayName)
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                validationMessage
             }
 
             Spacer(minLength: 8)
@@ -157,6 +158,8 @@ struct ActionRow: View {
                         .background(Color.green.opacity(0.12), in: Circle())
                 }
                 .buttonStyle(.plain)
+                .disabled(!action.validationResult.isValid)
+                .opacity(action.validationResult.isValid ? 1 : 0.45)
             }
         case .approved, .executing:
             ProgressView().scaleEffect(0.75)
@@ -166,6 +169,22 @@ struct ActionRow: View {
             Image(systemName: "xmark.circle.fill").foregroundStyle(Color(.systemGray3))
         case .failed:
             Image(systemName: "exclamationmark.circle.fill").foregroundStyle(.orange)
+        }
+    }
+
+    @ViewBuilder
+    private var validationMessage: some View {
+        switch action.validationResult {
+        case .valid:
+            EmptyView()
+        case .invalid(let reason):
+            Text(reason)
+                .font(.caption)
+                .foregroundStyle(.red)
+        case .warning(let message):
+            Text(message)
+                .font(.caption)
+                .foregroundStyle(.orange)
         }
     }
 }
