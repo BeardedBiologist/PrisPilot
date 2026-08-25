@@ -84,7 +84,7 @@ struct BarcodeScannerView: View {
             .font(.subheadline.weight(.medium))
             .padding(.horizontal, 18)
             .padding(.vertical, 12)
-            .background(.regularMaterial, in: Capsule())
+            .glassEffect(.regular, in: Capsule())
 
         case .found(let product):
             BarcodeResultView(product: product, mode: mode, onDone: { dismiss() })
@@ -103,9 +103,9 @@ struct BarcodeScannerView: View {
                     .foregroundStyle(.secondary)
                 HStack(spacing: 12) {
                     Button("Add manually") { showManualEntry = true }
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(.glassProminent)
                     Button("Dismiss") { scanResult = .idle }
-                        .buttonStyle(.bordered)
+                        .buttonStyle(.glass)
                 }
             }
             .padding(20)
@@ -127,7 +127,7 @@ struct BarcodeScannerView: View {
                 Label("Enter price manually", systemImage: "square.and.pencil")
                     .frame(maxWidth: .infinity)
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(.glassProminent)
             .padding()
         }
     }
@@ -209,7 +209,7 @@ private struct MultipleBarcodeResultsView: View {
             }
 
             Button("Cancel") { onDone() }
-                .buttonStyle(.bordered)
+                .buttonStyle(.glass)
                 .frame(maxWidth: .infinity, alignment: .trailing)
         }
         .padding(20)
@@ -243,7 +243,7 @@ private struct BarcodeProductChoiceRow: View {
             switch mode {
             case .priceEntry:
                 Button("Use") { showPriceEntry = true }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.glassProminent)
                     .controlSize(.small)
             case .addToList:
                 if addedToList {
@@ -251,7 +251,7 @@ private struct BarcodeProductChoiceRow: View {
                         .foregroundStyle(.green)
                 } else {
                     Button("Add") { addProductToList() }
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(.glassProminent)
                         .controlSize(.small)
                 }
             }
@@ -320,7 +320,7 @@ private struct BarcodeResultView: View {
                 switch mode {
                 case .priceEntry:
                     Button("Record Price") { showPriceEntry = true }
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(.glassProminent)
                 case .addToList:
                     if addedToList {
                         Label("Added", systemImage: "checkmark")
@@ -328,11 +328,11 @@ private struct BarcodeResultView: View {
                             .foregroundStyle(.green)
                     } else {
                         Button("Add to List") { addProductToList() }
-                            .buttonStyle(.borderedProminent)
+                            .buttonStyle(.glassProminent)
                     }
                 }
                 Button("Done") { onDone() }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(.glass)
             }
             .frame(maxWidth: .infinity)
         }

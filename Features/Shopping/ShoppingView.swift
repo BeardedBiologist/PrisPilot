@@ -5,6 +5,7 @@ import SwiftUI
 struct ShoppingView: View {
     @Environment(AppStore.self) private var store
     @State private var showAddList = false
+    @Namespace private var heroSpace
 
     private var personalLists: [ShoppingList] {
         store.activeLists.filter { $0.scope == .personal }
@@ -47,48 +48,46 @@ struct ShoppingView: View {
     }
 
     private var listContent: some View {
-        ScrollView {
-            LazyVStack(spacing: 12) {
-                if !personalLists.isEmpty {
-                    if store.household != nil {
-                        sectionHeader("Personal")
-                    }
+        List {
+            if !personalLists.isEmpty {
+                Section {
                     ForEach(personalLists) { list in
-                        NavigationLink(destination: ShoppingListDetailView(listID: list.id).environment(store)) {
-                            ShoppingListCard(list: list)
-                        }
-                        .buttonStyle(.plain)
-                        .contextMenu {
-                            listContextMenu(for: list)
-                        }
+                        listRow(for: list)
                     }
-                }
-
-                if !householdLists.isEmpty {
-                    sectionHeader("Household")
-                    ForEach(householdLists) { list in
-                        NavigationLink(destination: ShoppingListDetailView(listID: list.id).environment(store)) {
-                            ShoppingListCard(list: list)
-                        }
-                        .buttonStyle(.plain)
-                        .contextMenu {
-                            listContextMenu(for: list)
-                        }
+                } header: {
+                    if store.household != nil {
+                        Text("Personal")
                     }
                 }
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
+
+            if !householdLists.isEmpty {
+                Section("Household") {
+                    ForEach(householdLists) { list in
+                        listRow(for: list)
+                    }
+                }
+            }
         }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
     }
 
-    @ViewBuilder
-    private func sectionHeader(_ title: String) -> some View {
-        Text(title)
-            .font(.subheadline.weight(.semibold))
-            .foregroundStyle(.secondary)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.top, 4)
+    private func listRow(for list: ShoppingList) -> some View {
+        NavigationLink(destination: ShoppingListDetailView(listID: list.id, heroNamespace: heroSpace).environment(store)) {
+            ShoppingListCard(list: list)
+                .matchedTransitionSource(id: list.id, in: heroSpace)
+        }
+        .buttonStyle(.plain)
+        .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
+        .listRowSeparator(.hidden)
+        .listRowBackground(Color.clear)
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+            listContextMenu(for: list)
+        }
+        .contextMenu {
+            listContextMenu(for: list)
+        }
     }
 
     @ViewBuilder
@@ -126,10 +125,12 @@ struct ShoppingListCard: View {
                     .trim(from: 0, to: progress)
                     .stroke(progress == 1 ? Color.green : Color.blue, style: StrokeStyle(lineWidth: 4, lineCap: .round))
                     .rotationEffect(.degrees(-90))
-                    .animation(.easeInOut(duration: 0.3), value: progress)
+                    .animation(.snappy, value: progress)
                 Text("\(done)")
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(progress == 1 ? .green : .primary)
+                    .contentTransition(.numericText())
+                    .animation(.snappy, value: done)
             }
             .frame(width: 44, height: 44)
 
@@ -152,6 +153,8 @@ struct ShoppingListCard: View {
                     Text("kr \(formatDecimal(total))")
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.primary)
+                        .contentTransition(.numericText())
+                        .animation(.snappy, value: total)
                     Text("estimated")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
@@ -181,6 +184,11 @@ struct ShoppingListCard: View {
 struct ShoppingListDetailView: View {
     @Environment(AppStore.self) private var store
     let listID: UUID
+    /// Set only when pushed from `ShoppingView`'s own list — that's the only
+    /// place a matching `matchedTransitionSource` exists. `nil` for other
+    /// entry points (e.g. `ActivityTagDetailView`), which fall back to the
+    /// default push transition.
+    var heroNamespace: Namespace.ID? = nil
 
     @State private var showAddItem = false
     @State private var showBarcodeScanner = false
@@ -247,11 +255,8 @@ struct ShoppingListDetailView: View {
                         Button {
                             runOptimization()
                         } label: {
-                            if isOptimizing {
-                                ProgressView().scaleEffect(0.8)
-                            } else {
-                                Image(systemName: "wand.and.sparkles")
-                            }
+                            Image(systemName: "wand.and.sparkles")
+                                .symbolEffect(.variableColor.iterative, options: .repeating, isActive: isOptimizing)
                         }
                         .disabled(isOptimizing)
                     }
@@ -293,6 +298,7 @@ struct ShoppingListDetailView: View {
             // Re-optimize whenever items are added or removed
             if hasPriceData { runOptimization() }
         }
+        .zoomTransition(id: listID, namespace: heroNamespace)
     }
 
     // MARK: Total Header
@@ -341,6 +347,8 @@ struct ShoppingListDetailView: View {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text("kr \(formatDecimal(actualSpend))")
                                     .font(.system(size: 32, weight: .bold, design: .rounded))
+                                    .contentTransition(.numericText())
+                                    .animation(.snappy, value: actualSpend)
                                 Text("spent so far")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
@@ -354,6 +362,8 @@ struct ShoppingListDetailView: View {
                                 Text("≈ kr \(formatDecimal(estimatedRemaining))")
                                     .font(.title3.weight(.semibold))
                                     .foregroundStyle(.secondary)
+                                    .contentTransition(.numericText())
+                                    .animation(.snappy, value: estimatedRemaining)
                                 Text("remaining")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
@@ -363,6 +373,8 @@ struct ShoppingListDetailView: View {
                             VStack(alignment: .trailing, spacing: 2) {
                                 Text("≈ kr \(formatDecimal(est))")
                                     .font(.system(size: 32, weight: .bold, design: .rounded))
+                                    .contentTransition(.numericText())
+                                    .animation(.snappy, value: est)
                                 Text("estimated total")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
@@ -526,6 +538,9 @@ struct ShoppingItemRow: View {
             Image(systemName: item.isCompleted ? "checkmark.circle.fill" : "circle")
                 .foregroundStyle(item.isCompleted ? .green : Color(.systemGray3))
                 .font(.title2)
+                .contentTransition(.symbolEffect(.replace))
+                .symbolEffect(.bounce, value: item.isCompleted)
+                .animation(.snappy, value: item.isCompleted)
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(item.productName)
@@ -559,6 +574,8 @@ struct ShoppingItemRow: View {
                 VStack(alignment: .trailing, spacing: 1) {
                     Text("kr \(NSDecimalNumber(decimal: actual).stringValue)")
                         .font(.subheadline.weight(.medium))
+                        .contentTransition(.numericText())
+                        .animation(.snappy, value: actual)
                     Text("paid")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
@@ -567,6 +584,8 @@ struct ShoppingItemRow: View {
                 Text("≈ kr \(NSDecimalNumber(decimal: estimated).stringValue)")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
+                    .contentTransition(.numericText())
+                    .animation(.snappy, value: estimated)
             }
         }
         .padding(.vertical, 4)

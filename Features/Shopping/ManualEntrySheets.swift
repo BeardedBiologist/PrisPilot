@@ -518,6 +518,7 @@ struct AddRecipeSheet: View {
                     }
                 }
             }
+            .formStyle(.grouped)
             .navigationTitle("New Recipe")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -531,6 +532,7 @@ struct AddRecipeSheet: View {
                 }
             }
         }
+        .presentationSizing(.form)
     }
 
     private func saveRecipe() {

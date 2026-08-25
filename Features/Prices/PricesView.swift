@@ -404,6 +404,8 @@ private struct StoreModeRow: View {
             Spacer()
             Text(priceText)
                 .font(.subheadline.weight(.semibold))
+                .contentTransition(.numericText())
+                .animation(.snappy, value: observation.price)
         }
         .padding(.vertical, 2)
     }
@@ -457,6 +459,8 @@ struct PriceObservationRow: View {
             VStack(alignment: .trailing, spacing: 3) {
                 Text(priceText)
                     .font(.subheadline.weight(.semibold))
+                    .contentTransition(.numericText())
+                    .animation(.snappy, value: observation.price)
                 if isCheapest {
                     Label("Best price", systemImage: "checkmark.seal.fill")
                         .font(.caption2)

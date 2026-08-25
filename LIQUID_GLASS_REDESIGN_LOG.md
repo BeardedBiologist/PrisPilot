@@ -4,6 +4,52 @@ Companion to `LIQUID_GLASS_REDESIGN_PLAN.md`. Append an entry per work session/p
 
 ---
 
+## 2026-08-25 16:39 CEST — Phase 4 (Recipes) implemented
+
+All of `LIQUID_GLASS_REDESIGN_PLAN.md` §8 done. Compiles clean (`xcodebuild build`, compile-only). **Not yet verified on-device** — Phases 2–4 have now all landed back-to-back without an on-device check, at Josh's request to keep going.
+
+**Refactor first:** promoted the `ZoomTransitionIfAvailable` `ViewModifier` I wrote for Shopping (Phase 3) out of `ShoppingView.swift` (where it was `private`) into `DesignSystem/GlassTheme.swift` as a shared, generic `View.zoomTransition(id:namespace:)` — Recipes needed the exact same "optional namespace, falls back to default push transition when nil" pattern, and duplicating it a second time would've meant two copies to keep in sync. `ShoppingListDetailView` updated to call the shared helper; behavior unchanged.
+
+**`Features/Recipes/RecipesView.swift`:**
+- `RecipesView` gained `@Namespace private var heroSpace`. `recipeRows` now applies `.matchedTransitionSource(id: recipe.id, in: heroSpace)` to each row and passes the namespace into `RecipeDetailView(recipe:heroNamespace:)`, which applies `.zoomTransition(id: recipe.id, namespace: heroNamespace)` — same hero pattern as Shopping, this time with only one call site so no `nil`-fallback case actually triggers today, but kept optional/consistent with the shared helper's contract anyway.
+- Added `.swipeActions` to each recipe row: trailing destructive delete, leading favorite-toggle (pink tint, `heart.fill`/`heart.slash`). **This is new functionality** — there was previously no way to delete a recipe or toggle its favorite flag from the UI at all (recipes could only be created via `AddRecipeSheet` or AI chat actions). Both new actions mutate `store.recipes` directly and call `store.persistNow()`, the same pattern `ShoppingView`'s existing delete-list action already used — not a new pattern, just applied to a second entity.
+- `RecipeRow`'s favorite heart was previously conditionally shown only when `isFavorite == true` (a bare `Image`, no interaction). Changed to always show (outline `heart` vs filled `heart.fill`, dimmed gray vs red) with `.contentTransition(.symbolEffect(.replace))` + `.symbolEffect(.bounce, value: recipe.isFavorite)` — this only makes sense as a persistent, always-present element that swaps appearance, not one that's inserted/removed, which is why the visibility logic changed alongside the transition (a conditionally-removed view needs `.transition()`, not `.contentTransition()`).
+
+**`Features/Shopping/ManualEntrySheets.swift` (`AddRecipeSheet`):** confirmed it already used `Form`; added explicit `.formStyle(.grouped)` and `.presentationSizing(.form)` (applied inside the sheet's own body, matching how `PriceCaptureSheet` in the same file already self-applies `.presentationDetents`, rather than at the `.sheet {}` call site in `RecipesView`).
+
+### What's next
+- Josh to test Phases 2, 3, and 4 together on-device — none have been visually confirmed yet.
+- Phase 5 (Settings & Onboarding) is next per the plan: a hero account card at the top of Settings, an animated AI-status indicator, glass buttons on Onboarding's welcome CTAs, and a step transition for the onboarding flow.
+
+---
+
+## 2026-08-25 16:26 CEST — Phase 3 (Shopping, Prices, Scanner) implemented
+
+All of `LIQUID_GLASS_REDESIGN_PLAN.md` §7 done. Compiles clean throughout (`xcodebuild build`, compile-only). **Not yet verified on-device** — Phase 2 hasn't been confirmed on-device yet either at time of writing; Josh asked to keep going rather than wait.
+
+**`Features/Shopping/ShoppingView.swift`:**
+- `ShoppingListCard` progress ring: `.easeInOut` → `.snappy`; the "\(done)" count and the estimated-total price now use `.contentTransition(.numericText())`.
+- `listContent` migrated from `ScrollView` + `LazyVStack` to a real `List` (`.listStyle(.plain)`, `.scrollContentBackground(.hidden)`, per-row `.listRowInsets`/`.listRowSeparator(.hidden)`/`.listRowBackground(.clear)` to preserve the card look) — this was the plan's recommended path to get native `.swipeActions` and row reuse. Extracted the duplicated personal/household row markup into one `listRow(for:)` helper along the way (both sections had identical `NavigationLink` + modifiers before). Swipe-to-delete reuses the same `listContextMenu(for:)` builder the long-press context menu already used, so there's one source of truth for the delete action instead of two.
+- Hero transition: `ShoppingView` now owns a `@Namespace private var heroSpace`; `listRow` applies `.matchedTransitionSource(id: list.id, in: heroSpace)` to the card, and `ShoppingListDetailView` gained an optional `heroNamespace: Namespace.ID? = nil` parameter. A small `ZoomTransitionIfAvailable` `ViewModifier` applies `.navigationTransition(.zoom(sourceID:in:))` only when a namespace was actually passed in — needed because `ShoppingListDetailView` has a second call site (`ActivityTagDetailView`, a separate `NavigationStack` inside a sheet) with no matching transition source; that path now just falls back to the default push transition instead of crashing or misbehaving.
+- `ShoppingItemRow`'s completion icon: `.contentTransition(.symbolEffect(.replace))` + `.symbolEffect(.bounce, value: item.isCompleted)` between `circle` ↔ `checkmark.circle.fill`; its paid/estimated price `Text`s get `.contentTransition(.numericText())`.
+- `ShoppingListDetailView`'s optimize button: dropped the `ProgressView()`/`Image` swap in favor of `.symbolEffect(.variableColor.iterative, options: .repeating, isActive: isOptimizing)` on the `wand.and.sparkles` icon itself — reads as "AI thinking" rather than a generic spinner. The running-total numbers in `totalHeader` (`actualSpend`, `estimatedRemaining`, the computed `est` fallback) all get `.contentTransition(.numericText())`.
+
+**`Features/Prices/PricesView.swift`:** `PriceObservationRow` and `StoreModeRow`'s price `Text`s get `.contentTransition(.numericText())` paired with `.animation(.snappy, value: observation.price)`.
+
+**Deliberately skipped, with reasoning:** native `.toolbar { ToolbarItem { Button } }` icons in Shopping/Prices/Recipes (scan, add, compare, wand) were **not** individually wrapped in `.glassEffect()`/`.buttonStyle(.glass)`, even though the Phase 3 plan text suggested it for Prices' scanner/add buttons. Per `swiftui-liquid-glass`: "Standard SwiftUI bars and presentations adopt [Liquid Glass] automatically when built with the current SDK" — native toolbars already get system glass chrome for free. Wrapping each individual icon in its own glass capsule on top of that isn't how Apple's own apps style toolbar buttons (they stay plain/tinted) and would read as visually busy. This is the same principle already applied in Phase 2 (Chat's hand-rolled header got explicit glass because it's custom UI with no automatic treatment; native toolbars didn't).
+
+**`Features/Scanner/BarcodeScannerView.swift`:** the idle "Point at a barcode" pill — floating over the live VisionKit camera feed — switched from `.background(.regularMaterial, in: Capsule())` to real `.glassEffect(.regular, in: Capsule())`, the textbook "glass control over dynamic content" case. All the result-panel buttons (`BarcodeResultView`, `MultipleBarcodeResultsView`, `BarcodeProductChoiceRow`, the unknown-barcode buttons, the camera-unavailable manual-entry button) moved from `.borderedProminent`/`.bordered` to `.glassProminent`/`.glass`.
+
+**`Features/Scanner/ReceiptScannerView.swift`:** the two idle-state CTAs ("Take Photo", "Choose from Library") moved to `.glassProminent`/`.glass` for consistency with the rest of the app's button language.
+
+**Skipped, with reasoning — scan-line sweep animation:** the plan called for a `KeyframeAnimator`-driven scan-line sweep on the camera viewfinder. Neither scanner has a custom camera preview to draw one over: `BarcodeScannerView` uses VisionKit's `DataScannerViewController`, which already renders its own native scanning/highlighting chrome — a custom sweep on top would visually conflict with it. `ReceiptScannerView` uses the system `UIImagePickerController` (full-screen, via `.fullScreenCover`) for capture, not a SwiftUI-drawn preview at all. The plan's assumption (a custom AVFoundation preview) didn't match either actual implementation, so this item doesn't apply as written.
+
+### What's next
+- Josh to test Phases 2 and 3 together on-device (both are still unverified — this session moved through them back-to-back at Josh's request).
+- Phase 4 (Recipes) is next per the plan: swipe actions on `RecipesView`'s list, favorite-star symbol/content transitions, and the same `matchedTransitionSource`/`navigationTransition(.zoom)` hero pattern just built for Shopping, applied to `RecipeRow` → `RecipeDetailView`.
+
+---
+
 ## 2026-08-25 16:15 CEST — Phase 2 (Chat) implemented
 
 All of `LIQUID_GLASS_REDESIGN_PLAN.md` §6 done in one pass. Compiles clean after every step (`xcodebuild build`, compile-only). **Not yet verified on-device.**

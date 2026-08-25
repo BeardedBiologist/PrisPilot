@@ -301,7 +301,7 @@ struct ReceiptScannerView: View {
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 4)
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.glassProminent)
 
                 Button {
                     showPhotoPicker = true
@@ -310,7 +310,7 @@ struct ReceiptScannerView: View {
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 4)
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(.glass)
             }
             .padding(.horizontal, 32)
             .padding(.bottom, 40)

@@ -3,6 +3,7 @@ import SwiftUI
 struct RecipesView: View {
     @Environment(AppStore.self) private var store
     @State private var showAddRecipe = false
+    @Namespace private var heroSpace
 
     private var personalRecipes: [Recipe] {
         store.recipes.filter { $0.scope == .personal }
@@ -50,10 +51,40 @@ struct RecipesView: View {
 
     private func recipeRows(_ recipes: [Recipe]) -> some View {
         ForEach(recipes) { recipe in
-            NavigationLink(destination: RecipeDetailView(recipe: recipe)) {
+            NavigationLink(destination: RecipeDetailView(recipe: recipe, heroNamespace: heroSpace)) {
                 RecipeRow(recipe: recipe)
+                    .matchedTransitionSource(id: recipe.id, in: heroSpace)
+            }
+            .swipeActions(edge: .trailing) {
+                Button(role: .destructive) {
+                    deleteRecipe(recipe)
+                } label: {
+                    Label("Delete", systemImage: "trash")
+                }
+            }
+            .swipeActions(edge: .leading) {
+                Button {
+                    toggleFavorite(recipe)
+                } label: {
+                    Label(
+                        recipe.isFavorite ? "Unfavorite" : "Favorite",
+                        systemImage: recipe.isFavorite ? "heart.slash" : "heart.fill"
+                    )
+                }
+                .tint(.pink)
             }
         }
+    }
+
+    private func deleteRecipe(_ recipe: Recipe) {
+        store.recipes.removeAll { $0.id == recipe.id }
+        store.persistNow()
+    }
+
+    private func toggleFavorite(_ recipe: Recipe) {
+        guard let idx = store.recipes.firstIndex(where: { $0.id == recipe.id }) else { return }
+        store.recipes[idx].isFavorite.toggle()
+        store.persistNow()
     }
 }
 
@@ -78,19 +109,24 @@ struct RecipeRow: View {
                 .foregroundStyle(.secondary)
             }
             Spacer()
-            if recipe.isFavorite {
-                Image(systemName: "heart.fill")
-                    .foregroundStyle(.red)
-                    .font(.caption)
-            }
+            Image(systemName: recipe.isFavorite ? "heart.fill" : "heart")
+                .foregroundStyle(recipe.isFavorite ? .red : Color(.systemGray3))
+                .font(.caption)
+                .contentTransition(.symbolEffect(.replace))
+                .symbolEffect(.bounce, value: recipe.isFavorite)
         }
         .padding(.vertical, 4)
+        .animation(.snappy, value: recipe.isFavorite)
     }
 }
 
 struct RecipeDetailView: View {
     @Environment(AppStore.self) private var store
     let recipe: Recipe
+    /// Set only when pushed from `RecipesView`'s own list — the only place a
+    /// matching `matchedTransitionSource` exists. `nil` falls back to the
+    /// default push transition.
+    var heroNamespace: Namespace.ID? = nil
 
     private var costEstimate: RecipeCostEstimate {
         RecipeCostEstimate(recipe: recipe, observations: store.priceObservations)
@@ -212,6 +248,7 @@ struct RecipeDetailView: View {
         .reservesFloatingTabBarSpace()
         .navigationTitle(recipe.title)
         .navigationBarTitleDisplayMode(.large)
+        .zoomTransition(id: recipe.id, namespace: heroNamespace)
     }
 
     private func currencyText(_ value: Decimal, currency: Currency) -> String {
