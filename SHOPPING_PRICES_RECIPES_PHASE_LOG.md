@@ -7,6 +7,160 @@ the top. Each entry: what changed, why, how it was verified, what's next.
 
 ---
 
+## 2026-08-25 — Phase 9 (Prices: AI actions expansion) implemented
+
+Josh confirmed Phase 8 looks good. `xcodebuild ... build` → **BUILD
+SUCCEEDED**. This closes out the Prices block — five phases done now,
+matching Shopping's five.
+
+**`Models/ProposedAction.swift`:** new `ProposedActionType.mergeProducts`
+case (the other four types this phase needed —
+`updateProduct`/`deleteProduct`/`updatePriceObservation`/
+`deletePriceObservation` — already existed, same "type exists, payload
+doesn't" gap Phase 5 closed for Shopping). Added it to `isDestructive`
+alongside the delete types, since a merge deletes the source product even
+though it isn't itself a "delete" action type. Five new
+`ProposedActionPayload` cases matching.
+
+**`Store/AppStore.swift`:**
+- `execute(_:)` gained all five cases. `permissionTarget(for:)` extended
+  with one new line for `.mergeProducts` (mapped to `(.products, .delete)`
+  — it deletes the source product, so gating it at the stricter delete
+  permission felt safer than treating it as a mere edit).
+- Two new private lookup helpers: `productIndex(matching:)` (exact
+  case-insensitive name match, same non-creating pattern as
+  `shoppingListIndex(matching:)` from Phase 5) and the more involved
+  `mostRecentPersonalObservationIndex(productName:storeBranchName:)` — a
+  product can have many historical price observations, so "update/delete
+  the price for milk" needs a rule for *which* one. Picked: most recent by
+  `observedDate`, optionally narrowed to a store first if one was
+  mentioned, and **always excluding `source == .community`** — a chat user
+  correcting "their" price shouldn't be able to silently edit or delete
+  someone else's community-sourced observation through this path.
+- `updateProduct`/`deleteProduct`/`mergeProducts` execute cases all reuse
+  `productIndex(matching:)`; `mergeProducts`'s case just resolves both
+  names to IDs and calls the existing `mergeProducts(sourceID:targetID:)`
+  method Phase 8 already built for the UI merge sheet — no new merge logic,
+  just a second entry point into the same one.
+
+**`Services/GeminiAIService.swift`:** five new `functionDeclarations()` +
+`parseFunctionCall(_:)` pairs, same `makeFn` pattern as every prior phase.
+Risk levels: `high` for `deleteProduct` and `mergeProducts` (both
+irreversible-ish — merge folds one product's history into another with no
+UI undo path), `medium` for `deletePriceObservation`, `low` for the
+update/rename actions.
+
+**Deliberately skipped `MockAIService` this time** (unlike Phase 5, which
+added matching keyword triggers there) — the no-API-key fallback is a
+convenience for development without a Gemini key, and continuing to hand-
+tune keyword heuristics for every new action type is its own maintenance
+burden with diminishing return; Phase 5's known-issue entry above already
+flags that even the *live* model isn't reliably picking the right target
+for actions like this, so investing more in the mock's string-matching
+felt like the wrong place to spend effort right now.
+
+**Not committed.** Changed: `Models/ProposedAction.swift`,
+`Services/GeminiAIService.swift`, `Store/AppStore.swift`.
+
+### What's next
+
+Review checkpoint: Josh to test via Chat with a live Gemini key — "delete
+the milk product" (should require confirmation), "merge tomato and
+tomatoes" (should propose merging one into the other), "update the price I
+logged for bread to 25 kr". Given the standing known issue about the AI
+not reliably targeting the right existing record, it's worth watching
+specifically whether `updatePriceObservation`/`mergeProducts` pick the
+product the user actually meant, or (like the shopping-list case) go
+sideways in a similar way — that would be useful confirming evidence for
+the earlier bug note rather than a new, separate problem. Once confirmed,
+Shopping and Prices are both fully done (10 phases). Phase 10 (Meals:
+rename tab + data model — `MealPlan`/`MealPlanSlot`/`MatkasseBox`/
+`MatkasseMeal`) starts the Meals block.
+
+---
+
+## 2026-08-25 — Phase 8 (Prices: product/store detail & trust model) implemented
+
+Josh confirmed Phase 7 looks OK. `xcodebuild ... build` → **BUILD
+SUCCEEDED**.
+
+**`Store/AppStore.swift`** — new `// MARK: - Product Management` section:
+- `addProductAlias`/`removeProductAlias`/`setProductBarcode` — small
+  focused mutators (not one big `updateProduct(...)` with ambiguous
+  optional-of-optional semantics for "clear vs. don't change" — same
+  reasoning as Phase 5's item mutators).
+- `confirmPriceObservation(_:)` — "still accurate" re-confirmation.
+  Appends a **new** `PriceObservation` with today's date rather than
+  mutating the stale one in place, matching this app's existing
+  append-only price-history model (nothing else in the codebase edits a
+  `PriceObservation` after creation either).
+- `mergeProducts(sourceID:targetID:)` — reassigns every
+  `PriceObservation.productID`/`productName` and `ShoppingListItem
+  .productID`/`productName` from source to target, folds the source's name
+  and aliases into the target's alias list (so old receipts/observations
+  that still say the old name remain searchable via alias), keeps the
+  target's barcode unless it didn't have one, then deletes the source
+  product.
+
+**Unit-price helper now has its first call site** (built inert in Phase
+6): `ProductPriceHistoryView` gained a "Unit Price Comparison" section —
+latest non-expired observation per store, normalized via
+`PriceObservation.normalizedUnitPrice`, sorted cheapest-first with a
+"CHEAPEST" badge — only shown when 2+ stores have package-size data to
+compare (a single data point isn't a comparison).
+
+**`Features/Prices/PricesView.swift`, `ProductPriceHistoryView`:**
+- Split the old flat "All observations" section into "Your Prices" and
+  "Community Prices" — the product plan's "community and personal prices
+  can share the same product surface, but need separate fields/labels"
+  requirement; Phase 7 handled the reverse case (community mode showing a
+  match against personal), this is personal-mode showing community
+  clearly labeled as a second section rather than mixed in.
+- New "Barcode" section (a live `TextField` bound straight to
+  `store.setProductBarcode`, empty string treated as clearing it) and
+  "Aliases" section (list with swipe-to-delete via
+  `removeProductAlias`, add-new via a text field + button).
+- New "Merge Duplicate Product" button opens a new `MergeProductSheet`
+  (in the same file) — lists every other product, tapping one merges *it*
+  into the currently-viewed product and dismisses. One-directional by
+  design (pick the duplicate to absorb, not "which one survives") to keep
+  the flow to a single tap.
+
+**New file `Features/Prices/StoreDetailView.swift`** (registered in
+`project.pbxproj`, same four-piece manual wiring as every prior new file
+this session): latest-per-product price list for one branch, a stale
+count, and a "Confirm These Prices" section — stale observations whose
+product name exact-matches something on an active/planned shopping list or
+in a recipe (`importantProductNames`, a `Set<String>` exact-lowercased
+match — **not** the `looselyMatchesProductName` fuzzy matcher Phase 7 used
+for Needs Prices, since this needed a cheap `Set.contains` for a
+potentially large candidate list rather than an O(n²) fuzzy pass; noted as
+a real gap, not an oversight — a product named slightly differently on a
+list vs. in `priceObservations` won't get flagged as important here). Each
+"Confirm These Prices" row has a one-tap "Still Accurate" button wired to
+`confirmPriceObservation`. Wired in from `PricesView`'s `.byStore` mode —
+the store section header is now a button (`selectedBranch = branch`,
+`.sheet(item:)`), matching the existing header-as-button pattern
+`.byProduct` mode already used.
+
+**Not committed.** Changed: `Features/Prices/PricesView.swift`,
+`Features/Prices/StoreDetailView.swift` (new),
+`PrisPilot.xcodeproj/project.pbxproj`, `Store/AppStore.swift`.
+
+### What's next
+
+Review checkpoint: Josh to check a product detail page (barcode field,
+adding/removing an alias, the merge flow with two similarly-named test
+products, and the unit-price comparison once 2+ stores have package-size
+data for the same product) and a store detail page (tap a store header in
+Stores mode — stats, and "Confirm These Prices" if anything stale is on an
+active list). Once confirmed, Phase 9 (Prices: AI actions expansion —
+`updateProduct`/`deleteProduct`/`updatePriceObservation`/
+`deletePriceObservation`, plus a chat-triggered merge) is next, closing out
+the Prices block the same way Phase 5 closed out Shopping.
+
+---
+
 ## 2026-08-25 — Phase 7 (Prices: overview redesign) implemented
 
 `xcodebuild ... build` → **BUILD SUCCEEDED**.

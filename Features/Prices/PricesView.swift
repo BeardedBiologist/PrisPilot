@@ -26,6 +26,7 @@ struct PricesView: View {
     @State private var viewMode: PriceViewMode = .byProduct
     @State private var selectedProductName: IdentifiableString? = nil
     @State private var productNameForNewPrice: IdentifiableString? = nil
+    @State private var selectedBranch: StoreBranch? = nil
 
     private var filtered: [PriceObservation] {
         let q = searchText.trimmingCharacters(in: .whitespaces).lowercased()
@@ -168,6 +169,9 @@ struct PricesView: View {
                 AddPriceObservationSheet(prefilledProductName: item.value)
                     .environment(store)
             }
+            .sheet(item: $selectedBranch) { branch in
+                StoreDetailView(branch: branch).environment(store)
+            }
         }
     }
 
@@ -223,7 +227,7 @@ struct PricesView: View {
             let branchObs = store.priceObservations
                 .filter { $0.storeBranchID == branch.id && (q.isEmpty || $0.productName.lowercased().contains(q)) }
                 .sorted { $0.productName < $1.productName }
-            Section(branch.displayName) {
+            Section {
                 if branchObs.isEmpty {
                     Text("No prices recorded here yet.")
                         .font(.subheadline)
@@ -244,6 +248,19 @@ struct PricesView: View {
                             }
                     }
                 }
+            } header: {
+                Button {
+                    selectedBranch = branch
+                } label: {
+                    HStack {
+                        Text(branch.displayName)
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.caption2)
+                            .foregroundStyle(Color(.tertiaryLabel))
+                    }
+                }
+                .foregroundStyle(.primary)
             }
         }
     }
@@ -390,10 +407,20 @@ struct ProductPriceHistoryView: View {
     @Environment(\.dismiss) private var dismiss
     let productName: String
 
+    @State private var newAliasText = ""
+    @State private var showMergeSheet = false
+
     private var observations: [PriceObservation] {
         store.priceObservations
             .filter { $0.productName == productName }
             .sorted { $0.observedDate > $1.observedDate }
+    }
+
+    private var personalObservations: [PriceObservation] { observations.filter { $0.source != .community } }
+    private var communityObservations: [PriceObservation] { observations.filter { $0.source == .community } }
+
+    private var product: Product? {
+        store.products.first { $0.name.lowercased() == productName.lowercased() }
     }
 
     private var cheapestID: UUID? {
@@ -406,6 +433,23 @@ struct ProductPriceHistoryView: View {
             }
         }
         return latestByStore.values.min(by: { $0.price < $1.price })?.id
+    }
+
+    /// Latest, non-expired observation per store with a normalized unit
+    /// price — lets "which store is cheapest per kg/l/stk" be compared
+    /// even when package sizes differ, not just sticker price.
+    private var unitPriceComparison: [(storeName: String, unitPrice: UnitPrice)] {
+        var latestByStore: [UUID: PriceObservation] = [:]
+        for obs in observations where !obs.isPromoExpired {
+            if let existing = latestByStore[obs.storeBranchID] {
+                if obs.observedDate > existing.observedDate { latestByStore[obs.storeBranchID] = obs }
+            } else {
+                latestByStore[obs.storeBranchID] = obs
+            }
+        }
+        return latestByStore.values
+            .compactMap { obs in obs.normalizedUnitPrice.map { (obs.storeBranchName, $0) } }
+            .sorted { $0.unitPrice.value < $1.unitPrice.value }
     }
 
     private var priceRange: String? {
@@ -441,16 +485,54 @@ struct ProductPriceHistoryView: View {
                     }
                 }
 
-                Section("All observations (\(observations.count))") {
-                    ForEach(observations) { obs in
-                        PriceObservationRow(
-                            observation: obs,
-                            communityConfidence: obs.source == .community ? store.communityConfidence(for: obs) : nil,
-                            isCommunityOutlier: obs.source == .community && store.isOutlier(obs),
-                            isCheapest: obs.id == cheapestID && observations.count > 1
-                        )
-                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                            if obs.source == .community {
+                if unitPriceComparison.count > 1 {
+                    Section {
+                        ForEach(Array(unitPriceComparison.enumerated()), id: \.offset) { index, entry in
+                            HStack {
+                                Text(entry.storeName)
+                                    .font(.subheadline)
+                                if index == 0 {
+                                    Text("CHEAPEST")
+                                        .font(.system(size: 9, weight: .bold))
+                                        .foregroundStyle(.white)
+                                        .padding(.horizontal, 5)
+                                        .padding(.vertical, 1.5)
+                                        .background(.green, in: Capsule())
+                                }
+                                Spacer()
+                                Text(entry.unitPrice.formatted(currencySymbol: store.settings.currency.symbol))
+                                    .font(.subheadline.weight(.medium))
+                                    .foregroundStyle(index == 0 ? .green : .primary)
+                            }
+                        }
+                    } header: {
+                        Text("Unit Price Comparison")
+                    } footer: {
+                        Text("Normalized to a common unit so differently-sized packages compare fairly.")
+                    }
+                }
+
+                if !personalObservations.isEmpty {
+                    Section("Your Prices (\(personalObservations.count))") {
+                        ForEach(personalObservations) { obs in
+                            PriceObservationRow(
+                                observation: obs,
+                                isCheapest: obs.id == cheapestID && observations.count > 1
+                            )
+                        }
+                    }
+                }
+
+                if !communityObservations.isEmpty {
+                    Section("Community Prices (\(communityObservations.count))") {
+                        ForEach(communityObservations) { obs in
+                            PriceObservationRow(
+                                observation: obs,
+                                communityConfidence: store.communityConfidence(for: obs),
+                                isCommunityOutlier: store.isOutlier(obs),
+                                isCheapest: obs.id == cheapestID && observations.count > 1
+                            )
+                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                                 Button { store.flagCommunityPriceObservation(obs.id) } label: {
                                     Label("Flag", systemImage: "flag")
                                 }
@@ -471,6 +553,51 @@ struct ProductPriceHistoryView: View {
                         }
                     }
                 }
+
+                if let product {
+                    Section("Barcode") {
+                        TextField(
+                            "No barcode saved",
+                            text: Binding(
+                                get: { product.barcode ?? "" },
+                                set: { store.setProductBarcode(product.id, barcode: $0.isEmpty ? nil : $0) }
+                            )
+                        )
+                        .keyboardType(.numberPad)
+                    }
+
+                    Section {
+                        ForEach(product.aliases, id: \.self) { alias in
+                            Text(alias)
+                        }
+                        .onDelete { offsets in
+                            for index in offsets {
+                                store.removeProductAlias(product.id, alias: product.aliases[index])
+                            }
+                        }
+                        HStack {
+                            TextField("Add alias (e.g. store-specific name)", text: $newAliasText)
+                                .autocorrectionDisabled()
+                            Button("Add") {
+                                store.addProductAlias(product.id, alias: newAliasText)
+                                newAliasText = ""
+                            }
+                            .disabled(newAliasText.trimmingCharacters(in: .whitespaces).isEmpty)
+                        }
+                    } header: {
+                        Text("Aliases")
+                    } footer: {
+                        Text("Alternate names this product is known by across stores or receipts.")
+                    }
+
+                    Section {
+                        Button {
+                            showMergeSheet = true
+                        } label: {
+                            Label("Merge Duplicate Product", systemImage: "arrow.triangle.merge")
+                        }
+                    }
+                }
             }
             .navigationTitle(productName)
             .navigationBarTitleDisplayMode(.large)
@@ -479,7 +606,66 @@ struct ProductPriceHistoryView: View {
                     Button("Done") { dismiss() }
                 }
             }
+            .sheet(isPresented: $showMergeSheet) {
+                if let product {
+                    MergeProductSheet(targetProduct: product).environment(store)
+                }
+            }
         }
+    }
+}
+
+// MARK: - Merge Product Sheet
+
+struct MergeProductSheet: View {
+    @Environment(AppStore.self) private var store
+    @Environment(\.dismiss) private var dismiss
+
+    let targetProduct: Product
+
+    private var candidates: [Product] {
+        store.products.filter { $0.id != targetProduct.id }.sorted { $0.name < $1.name }
+    }
+
+    var body: some View {
+        NavigationStack {
+            List {
+                if candidates.isEmpty {
+                    ContentUnavailableView(
+                        "No Other Products",
+                        systemImage: "tag",
+                        description: Text("There's nothing else to merge yet.")
+                    )
+                } else {
+                    Section {
+                        ForEach(candidates) { candidate in
+                            Button {
+                                store.mergeProducts(sourceID: candidate.id, targetID: targetProduct.id)
+                                dismiss()
+                            } label: {
+                                HStack {
+                                    Text(candidate.name)
+                                        .foregroundStyle(.primary)
+                                    Spacer()
+                                    Image(systemName: "arrow.triangle.merge")
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                        }
+                    } header: {
+                        Text("Merge into \"\(targetProduct.name)\"")
+                    } footer: {
+                        Text("The selected product's prices and aliases move to \(targetProduct.name), and the duplicate is deleted. This can't be undone.")
+                    }
+                }
+            }
+            .navigationTitle("Merge Duplicate")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+            }
+        }
+        .presentationDetents([.medium, .large])
     }
 }
 

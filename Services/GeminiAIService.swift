@@ -427,6 +427,53 @@ final class GeminiAIService: AIService, OnboardingAIService, ReceiptParsingAISer
                 required: ["name"]
             ),
             makeFn(
+                name: "updateProduct",
+                desc: "Edit an existing product's name, category, or default unit.",
+                props: [
+                    "existingName": strProp("Existing product name"),
+                    "newName":      strProp("New name, if renaming"),
+                    "category":     strProp("New category, if changing it"),
+                    "unit":         enumProp("New default unit, if changing it", ["g", "kg", "ml", "l", "stk", "pk"])
+                ],
+                required: ["existingName"]
+            ),
+            makeFn(
+                name: "deleteProduct",
+                desc: "Delete a product from the catalogue. Only use when the user clearly asks to remove it.",
+                props: ["name": strProp("Product name to delete")],
+                required: ["name"]
+            ),
+            makeFn(
+                name: "mergeProducts",
+                desc: "Merge two products that are duplicates of each other (e.g. 'tomato' and 'tomatoes'). The source product's prices and aliases move to the target, and the source is deleted.",
+                props: [
+                    "sourceProductName": strProp("The duplicate product to absorb and delete"),
+                    "targetProductName": strProp("The product that survives and keeps its name")
+                ],
+                required: ["sourceProductName", "targetProductName"]
+            ),
+            makeFn(
+                name: "updatePriceObservation",
+                desc: "Correct the most recently recorded price for a product (optionally at a specific store). Use when the user says they made a mistake or the price changed.",
+                props: [
+                    "productName":     strProp("Product name"),
+                    "storeBranchName": strProp("Store to narrow down which price, if the product is priced at multiple stores"),
+                    "newPrice":        numProp("Corrected price in NOK"),
+                    "newQuantity":     numProp("Corrected package quantity, if changing it"),
+                    "newUnit":         enumProp("Corrected unit, if changing it", ["g", "kg", "ml", "l", "stk", "pk"])
+                ],
+                required: ["productName"]
+            ),
+            makeFn(
+                name: "deletePriceObservation",
+                desc: "Delete the most recently recorded price for a product (optionally at a specific store). Only use when the user clearly asks to remove a recorded price.",
+                props: [
+                    "productName":     strProp("Product name"),
+                    "storeBranchName": strProp("Store to narrow down which price, if the product is priced at multiple stores")
+                ],
+                required: ["productName"]
+            ),
+            makeFn(
                 name: "createStore",
                 desc: "Add a supermarket branch the user shops at or wants to track. Use for specific physical locations such as Rema 1000 Pindsle.",
                 props: [
@@ -661,6 +708,64 @@ final class GeminiAIService: AIService, OnboardingAIService, ReceiptParsingAISer
                 summary: "Add product: \(name)",
                 payload: .createProduct(name: name, category: args["category"]?.stringValue, unit: unit),
                 riskLevel: .low
+            ))
+
+        case "updateProduct":
+            guard let existingName = args["existingName"]?.stringValue else { return .none }
+            let newName = args["newName"]?.stringValue
+            let unit = args["unit"]?.stringValue.flatMap { MeasurementUnit(rawValue: $0) }
+            return .action(ProposedAction(
+                type: .updateProduct,
+                summary: newName.map { "Rename product \(existingName) to \($0)" } ?? "Update product: \(existingName)",
+                payload: .updateProduct(existingName: existingName, newName: newName, category: args["category"]?.stringValue, unit: unit),
+                riskLevel: .low
+            ))
+
+        case "deleteProduct":
+            guard let name = args["name"]?.stringValue else { return .none }
+            return .action(ProposedAction(
+                type: .deleteProduct,
+                summary: "Delete product: \(name)",
+                payload: .deleteProduct(name: name),
+                riskLevel: .high
+            ))
+
+        case "mergeProducts":
+            guard let source = args["sourceProductName"]?.stringValue,
+                  let target = args["targetProductName"]?.stringValue else { return .none }
+            return .action(ProposedAction(
+                type: .mergeProducts,
+                summary: "Merge \(source) into \(target)",
+                payload: .mergeProducts(sourceProductName: source, targetProductName: target),
+                riskLevel: .high
+            ))
+
+        case "updatePriceObservation":
+            guard let product = args["productName"]?.stringValue else { return .none }
+            let store = args["storeBranchName"]?.stringValue
+            let newPriceD = args["newPrice"]?.doubleValue
+            let unit = args["newUnit"]?.stringValue.flatMap { MeasurementUnit(rawValue: $0) }
+            return .action(ProposedAction(
+                type: .updatePriceObservation,
+                summary: "Update price: \(product)" + (store.map { " at \($0)" } ?? ""),
+                payload: .updatePriceObservation(
+                    productName: product,
+                    storeBranchName: store,
+                    newPrice: newPriceD.map { Decimal($0) },
+                    newQuantity: args["newQuantity"]?.doubleValue,
+                    newUnit: unit
+                ),
+                riskLevel: .low
+            ))
+
+        case "deletePriceObservation":
+            guard let product = args["productName"]?.stringValue else { return .none }
+            let store = args["storeBranchName"]?.stringValue
+            return .action(ProposedAction(
+                type: .deletePriceObservation,
+                summary: "Delete price: \(product)" + (store.map { " at \($0)" } ?? ""),
+                payload: .deletePriceObservation(productName: product, storeBranchName: store),
+                riskLevel: .medium
             ))
 
         case "createStore":

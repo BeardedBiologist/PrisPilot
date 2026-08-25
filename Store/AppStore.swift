@@ -520,7 +520,7 @@ class AppStore {
             return (.products, .create)
         case .updateProduct:
             return (.products, .edit)
-        case .deleteProduct:
+        case .deleteProduct, .mergeProducts:
             return (.products, .delete)
         case .createPriceObservation:
             return (.prices, .create)
@@ -687,6 +687,42 @@ class AppStore {
             products.append(product)
             return [product.id]
 
+        case .updateProduct(let existingName, let newName, let category, let unit):
+            guard let idx = productIndex(matching: existingName) else { return [] }
+            if let newName, !newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                products[idx].name = newName
+            }
+            if let category { products[idx].category = category }
+            if let unit { products[idx].defaultUnit = unit }
+            return [products[idx].id]
+
+        case .deleteProduct(let name):
+            guard let idx = productIndex(matching: name) else { return [] }
+            let id = products[idx].id
+            products.remove(at: idx)
+            return [id]
+
+        case .mergeProducts(let sourceProductName, let targetProductName):
+            guard let sourceIdx = productIndex(matching: sourceProductName),
+                  let targetIdx = productIndex(matching: targetProductName) else { return [] }
+            let sourceID = products[sourceIdx].id
+            let targetID = products[targetIdx].id
+            mergeProducts(sourceID: sourceID, targetID: targetID)
+            return [targetID]
+
+        case .updatePriceObservation(let productName, let storeBranchName, let newPrice, let newQuantity, let newUnit):
+            guard let idx = mostRecentPersonalObservationIndex(productName: productName, storeBranchName: storeBranchName) else { return [] }
+            if let newPrice { priceObservations[idx].price = newPrice }
+            if let newQuantity { priceObservations[idx].quantity = newQuantity }
+            if let newUnit { priceObservations[idx].unit = newUnit }
+            return [priceObservations[idx].id]
+
+        case .deletePriceObservation(let productName, let storeBranchName):
+            guard let idx = mostRecentPersonalObservationIndex(productName: productName, storeBranchName: storeBranchName) else { return [] }
+            let id = priceObservations[idx].id
+            priceObservations.remove(at: idx)
+            return [id]
+
         case .createRecipe(let title, let servings):
             let recipe = Recipe(title: title, servings: servings)
             recipes.append(recipe)
@@ -711,6 +747,34 @@ class AppStore {
         let product = Product(name: name)
         products.append(product)
         return product
+    }
+
+    /// Case-insensitive exact-name lookup for AI actions that must target
+    /// an *existing* product (update/delete/merge) — never creates one,
+    /// same reasoning as `shoppingListIndex(matching:)`.
+    private func productIndex(matching name: String) -> Int? {
+        let target = name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return products.firstIndex { $0.name.lowercased() == target }
+    }
+
+    /// Most recently observed non-community price for a product, optionally
+    /// narrowed to a store — the "which observation did the user mean" for
+    /// a chat-driven price update/delete, since a product can have many
+    /// historical observations. Community prices are excluded: a chat
+    /// user editing/deleting "their" price shouldn't be able to touch
+    /// someone else's community-sourced observation this way.
+    private func mostRecentPersonalObservationIndex(productName: String, storeBranchName: String?) -> Int? {
+        let targetProduct = productName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        var candidates = priceObservations.indices.filter {
+            priceObservations[$0].productName.lowercased() == targetProduct &&
+            priceObservations[$0].source != .community
+        }
+        if let storeBranchName, !storeBranchName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            let targetStore = storeBranchName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            let narrowed = candidates.filter { priceObservations[$0].storeBranchName.lowercased().contains(targetStore) }
+            if !narrowed.isEmpty { candidates = narrowed }
+        }
+        return candidates.max { priceObservations[$0].observedDate < priceObservations[$1].observedDate }
     }
 
     @discardableResult
@@ -853,6 +917,93 @@ class AppStore {
         return bySource.values
             .map { NeedsPriceEntry(productName: $0.productName, sources: $0.sources.sorted()) }
             .sorted { $0.productName < $1.productName }
+    }
+
+    // MARK: - Product Management
+
+    func addProductAlias(_ productID: UUID, alias: String) {
+        let trimmed = alias.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty,
+              let idx = products.firstIndex(where: { $0.id == productID }),
+              !products[idx].aliases.contains(where: { $0.caseInsensitiveCompare(trimmed) == .orderedSame }) else { return }
+        products[idx].aliases.append(trimmed)
+        persistNow()
+    }
+
+    func removeProductAlias(_ productID: UUID, alias: String) {
+        guard let idx = products.firstIndex(where: { $0.id == productID }) else { return }
+        products[idx].aliases.removeAll { $0 == alias }
+        persistNow()
+    }
+
+    func setProductBarcode(_ productID: UUID, barcode: String?) {
+        guard let idx = products.firstIndex(where: { $0.id == productID }) else { return }
+        products[idx].barcode = barcode
+        persistNow()
+    }
+
+    /// Re-confirms a price is still accurate by recording a fresh
+    /// observation with today's date — same price/quantity/unit/store,
+    /// new `observedDate`. Appends rather than mutating the old
+    /// observation, matching this app's append-only price history model.
+    func confirmPriceObservation(_ observationID: UUID) {
+        guard let existing = priceObservations.first(where: { $0.id == observationID }) else { return }
+        let refreshed = PriceObservation(
+            productID: existing.productID,
+            productName: existing.productName,
+            storeBranchID: existing.storeBranchID,
+            storeBranchName: existing.storeBranchName,
+            price: existing.price,
+            currency: existing.currency,
+            quantity: existing.quantity,
+            unit: existing.unit,
+            isPromotion: false,
+            priceKind: existing.priceKind,
+            observedDate: Date(),
+            source: .manual,
+            scope: existing.scope
+        )
+        priceObservations.append(refreshed)
+        queueCommunityContributionIfNeeded(for: refreshed)
+        persistNow()
+    }
+
+    /// Merges a duplicate product into another: every price observation and
+    /// shopping-list item referencing `sourceID` is reassigned to
+    /// `targetID` (name updated to match), the source's name and aliases
+    /// are folded into the target's alias list, and the source product is
+    /// deleted.
+    func mergeProducts(sourceID: UUID, targetID: UUID) {
+        guard sourceID != targetID,
+              let sourceIdx = products.firstIndex(where: { $0.id == sourceID }),
+              let targetIdx = products.firstIndex(where: { $0.id == targetID }) else { return }
+
+        let source = products[sourceIdx]
+        let targetName = products[targetIdx].name
+
+        for idx in priceObservations.indices where priceObservations[idx].productID == sourceID {
+            priceObservations[idx].productID = targetID
+            priceObservations[idx].productName = targetName
+        }
+
+        for listIdx in shoppingLists.indices {
+            for itemIdx in shoppingLists[listIdx].items.indices where shoppingLists[listIdx].items[itemIdx].productID == sourceID {
+                shoppingLists[listIdx].items[itemIdx].productID = targetID
+                shoppingLists[listIdx].items[itemIdx].productName = targetName
+            }
+        }
+
+        var mergedAliases = Set(products[targetIdx].aliases)
+        mergedAliases.formUnion(source.aliases)
+        mergedAliases.insert(source.name)
+        mergedAliases.remove(targetName)
+        products[targetIdx].aliases = mergedAliases.sorted()
+        if products[targetIdx].barcode == nil {
+            products[targetIdx].barcode = source.barcode
+        }
+
+        products.remove(at: sourceIdx)
+        persistNow()
     }
 
     // MARK: - Community Pricing

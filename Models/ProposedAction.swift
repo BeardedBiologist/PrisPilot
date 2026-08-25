@@ -37,7 +37,7 @@ struct ProposedAction: Identifiable {
 // MARK: - Action Types
 
 enum ProposedActionType: String {
-    case createProduct, updateProduct, deleteProduct
+    case createProduct, updateProduct, deleteProduct, mergeProducts
     case createPriceObservation, updatePriceObservation, deletePriceObservation
     case createShoppingList, updateShoppingList, deleteShoppingList
     case addShoppingListItem, updateShoppingListItem, completeShoppingListItem, removeShoppingListItem
@@ -53,6 +53,7 @@ enum ProposedActionType: String {
         case .createProduct: return "Add product"
         case .updateProduct: return "Update product"
         case .deleteProduct: return "Delete product"
+        case .mergeProducts: return "Merge products"
         case .createPriceObservation: return "Add price"
         case .updatePriceObservation: return "Update price"
         case .deletePriceObservation: return "Delete price"
@@ -87,6 +88,7 @@ enum ProposedActionType: String {
         switch self {
         case .createProduct, .updateProduct: return "tag"
         case .deleteProduct: return "tag.slash"
+        case .mergeProducts: return "arrow.triangle.merge"
         case .createPriceObservation, .updatePriceObservation: return "dollarsign.circle"
         case .deletePriceObservation: return "dollarsign.circle"
         case .createShoppingList, .updateShoppingList: return "list.bullet"
@@ -112,7 +114,7 @@ enum ProposedActionType: String {
     }
 
     var isDestructive: Bool {
-        [.deleteProduct, .deletePriceObservation, .deleteShoppingList,
+        [.deleteProduct, .mergeProducts, .deletePriceObservation, .deleteShoppingList,
          .removeShoppingListItem, .deleteRecipe, .deleteStore, .deleteMemory].contains(self)
     }
 }
@@ -121,7 +123,12 @@ enum ProposedActionType: String {
 
 enum ProposedActionPayload {
     case createProduct(name: String, category: String?, unit: MeasurementUnit?)
+    case updateProduct(existingName: String, newName: String?, category: String?, unit: MeasurementUnit?)
+    case deleteProduct(name: String)
+    case mergeProducts(sourceProductName: String, targetProductName: String)
     case createPriceObservation(productName: String, storeBranchName: String, price: Decimal, quantity: Double?, unit: MeasurementUnit?, isPromotion: Bool, date: Date)
+    case updatePriceObservation(productName: String, storeBranchName: String?, newPrice: Decimal?, newQuantity: Double?, newUnit: MeasurementUnit?)
+    case deletePriceObservation(productName: String, storeBranchName: String?)
     case addShoppingListItem(listName: String, productName: String, quantity: String, notes: String?)
     case createShoppingList(name: String)
     case updateShoppingList(existingListName: String, newName: String?, plannedDate: Date?)
