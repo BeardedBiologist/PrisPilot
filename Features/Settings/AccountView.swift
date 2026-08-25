@@ -145,6 +145,7 @@ struct AccountManagementView: View {
                 Text("Permanently removes your account and all synced data. Local data on this device is not affected.")
             }
         }
+        .reservesFloatingTabBarSpace()
         .navigationTitle("Account")
         .navigationBarTitleDisplayMode(.large)
         .confirmationDialog("Sign Out", isPresented: $showSignOutConfirmation) {

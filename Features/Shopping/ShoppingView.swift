@@ -23,6 +23,7 @@ struct ShoppingView: View {
                     listContent
                 }
             }
+            .reservesFloatingTabBarSpace()
             .navigationTitle("Shopping")
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
@@ -236,6 +237,7 @@ struct ShoppingListDetailView: View {
             }
         }
         .listStyle(.insetGrouped)
+        .reservesFloatingTabBarSpace()
         .navigationTitle(list?.name ?? "List")
         .navigationBarTitleDisplayMode(.large)
         .toolbar {

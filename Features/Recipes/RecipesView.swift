@@ -35,6 +35,7 @@ struct RecipesView: View {
                     }
                 }
             }
+            .reservesFloatingTabBarSpace()
             .navigationTitle("Recipes")
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
@@ -208,6 +209,7 @@ struct RecipeDetailView: View {
                 }
             }
         }
+        .reservesFloatingTabBarSpace()
         .navigationTitle(recipe.title)
         .navigationBarTitleDisplayMode(.large)
     }

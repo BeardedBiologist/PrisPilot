@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ChatView: View {
     @Environment(AppStore.self) private var store
+    @Environment(\.floatingTabBarInset) private var floatingTabBarInset
     @State private var viewModel = ChatViewModel(appStore: .shared)
     @FocusState private var inputFocused: Bool
 
@@ -180,6 +181,7 @@ struct ChatView: View {
                 .fill(Color.primary.opacity(0.08))
                 .frame(height: 0.5)
         }
+        .padding(.bottom, floatingTabBarInset)
     }
 
     private var canSend: Bool {
@@ -313,6 +315,7 @@ struct ChatHistoryView: View {
                 viewModel.deleteChatSessions(at: offsets)
             }
         }
+        .reservesFloatingTabBarSpace()
         .navigationTitle("Chat History")
         .navigationBarTitleDisplayMode(.large)
         .toolbar {
@@ -456,6 +459,7 @@ struct MemoryListView: View {
                 }
             }
         }
+        .reservesFloatingTabBarSpace()
         .navigationTitle("AI Memory")
         .navigationBarTitleDisplayMode(.large)
         .sheet(item: $editingMemory) { memory in

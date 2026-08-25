@@ -74,7 +74,12 @@ struct PricesView: View {
                     }
                 }
             }
-            .searchable(text: $searchText, prompt: "Search products or stores")
+            .reservesFloatingTabBarSpace()
+            .searchable(
+                text: $searchText,
+                placement: .navigationBarDrawer(displayMode: .always),
+                prompt: "Search products or stores"
+            )
             .navigationTitle("Prices")
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {

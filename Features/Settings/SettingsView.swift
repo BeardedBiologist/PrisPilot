@@ -115,6 +115,7 @@ struct SettingsView: View {
                     }
                 }
             }
+            .reservesFloatingTabBarSpace()
             .navigationTitle("Profile & Settings")
             .sheet(isPresented: $showSignIn) {
                 SignInView()
@@ -218,6 +219,7 @@ struct CommunityPricingSettingsView: View {
                     .foregroundStyle(.secondary)
             }
         }
+        .reservesFloatingTabBarSpace()
         .navigationTitle("Community Pricing")
         .navigationBarTitleDisplayMode(.large)
     }
@@ -266,6 +268,7 @@ struct ShoppingOptimisationSettingsView: View {
                 Text("Distance is entered manually per store for now. Set both values to zero to ignore travel cost.")
             }
         }
+        .reservesFloatingTabBarSpace()
         .navigationTitle("Shopping Optimisation")
         .navigationBarTitleDisplayMode(.large)
     }
@@ -320,6 +323,7 @@ struct AIPermissionsView: View {
                 }
             }
         }
+        .reservesFloatingTabBarSpace()
         .navigationTitle("AI Permissions")
         .navigationBarTitleDisplayMode(.large)
     }
@@ -387,6 +391,7 @@ struct StoreSettingsView: View {
                 }
             }
         }
+        .reservesFloatingTabBarSpace()
         .navigationTitle("Stores")
         .navigationBarTitleDisplayMode(.large)
         .toolbar {

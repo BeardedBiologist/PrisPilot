@@ -68,6 +68,7 @@ struct PriceComparisonView: View {
                 }
             }
         }
+        .reservesFloatingTabBarSpace()
         .navigationTitle("Compare Stores")
         .navigationBarTitleDisplayMode(.large)
     }

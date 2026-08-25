@@ -1,10 +1,14 @@
 import SwiftUI
+import UIKit
 
 struct RootTabView: View {
     @Environment(AppStore.self) private var store
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var selectedTab: RootTab = .chat
     @State private var showOnboarding = false
+    @State private var measuredTabBarHeight: CGFloat = 100
+    @Namespace private var tabBarNamespace
 
     enum RootTab: Hashable {
         case shopping
@@ -15,10 +19,28 @@ struct RootTabView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
+        // Floating overlay, not flow layout: Liquid Glass needs content
+        // behind it to actually refract/blur, and a flow-layout bar (with
+        // flat app background directly behind it) renders as visually flat.
+        // Unlike the earlier floating attempts, clearance is not left to
+        // ancestor `.safeAreaInset` propagation across each tab's own
+        // `NavigationStack` (proven unreliable — see
+        // LIQUID_GLASS_REDESIGN_LOG.md). Instead the bar's *actual* rendered
+        // height is measured live and handed down via
+        // `\.floatingTabBarInset`; every feature view is responsible for
+        // reserving that space itself, at the point where its own scrollable
+        // content lives.
+        ZStack(alignment: .bottom) {
             currentTab
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .environment(\.floatingTabBarInset, measuredTabBarHeight)
+
             customTabBar
+                .onGeometryChange(for: CGFloat.self) { proxy in
+                    proxy.size.height
+                } action: { newHeight in
+                    measuredTabBarHeight = newHeight
+                }
         }
         .ignoresSafeArea(.keyboard, edges: .bottom)
         .fullScreenCover(isPresented: $showOnboarding) {
@@ -64,57 +86,85 @@ struct RootTabView: View {
     }
 
     private var customTabBar: some View {
-        HStack(alignment: .center, spacing: 0) {
-            tabButton(.shopping, title: "Shopping", systemImage: "cart.fill")
-            tabButton(.prices, title: "Prices", systemImage: "tag.fill")
-            chatTabButton
-            tabButton(.recipes, title: "Recipes", systemImage: "fork.knife")
-            tabButton(.profile, title: "Profile", systemImage: "person.circle.fill")
+        GlassEffectContainer(spacing: GlassTheme.containerSpacing) {
+            HStack(alignment: .center, spacing: 2) {
+                tabButton(.shopping, title: "Shopping", systemImage: "cart", selectedImage: "cart.fill")
+                tabButton(.prices, title: "Prices", systemImage: "tag", selectedImage: "tag.fill")
+                chatTabButton
+                tabButton(.recipes, title: "Recipes", systemImage: "fork.knife", selectedImage: "fork.knife")
+                tabButton(.profile, title: "Profile", systemImage: "person.circle", selectedImage: "person.circle.fill")
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .glassEffect(.regular, in: Capsule())
         }
-        .frame(height: 82)
-        .padding(.horizontal, 18)
-        .background(.regularMaterial)
-        .overlay(alignment: .top) {
-            Divider()
-        }
+        .padding(.horizontal, 16)
+        .padding(.bottom, 8)
     }
 
-    private func tabButton(_ tab: RootTab, title: String, systemImage: String) -> some View {
-        Button {
-            selectedTab = tab
+    private func tabButton(_ tab: RootTab, title: String, systemImage: String, selectedImage: String) -> some View {
+        let isSelected = selectedTab == tab
+        return Button {
+            selectTab(tab)
         } label: {
             VStack(spacing: 4) {
-                Image(systemName: systemImage)
-                    .font(.system(size: 22, weight: .semibold))
-                    .frame(height: 25)
+                ZStack {
+                    if isSelected {
+                        Capsule()
+                            .fill(GlassTheme.tint.opacity(0.16))
+                            .frame(width: 44, height: 30)
+                            .matchedGeometryEffect(id: "tabSelection", in: tabBarNamespace)
+                    }
+                    Image(systemName: isSelected ? selectedImage : systemImage)
+                        .font(.system(size: 20, weight: .semibold))
+                        .contentTransition(.symbolEffect(.replace))
+                        .frame(height: 25)
+                }
+                .frame(height: 30)
+
                 Text(title)
                     .font(.caption2.weight(.semibold))
                     .lineLimit(1)
             }
-            .foregroundStyle(selectedTab == tab ? .blue : .primary)
+            .foregroundStyle(isSelected ? GlassTheme.tint : .primary)
             .frame(maxWidth: .infinity)
             .frame(height: 58)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(title)
+        .accessibilityAddTraits(isSelected ? [.isSelected] : [])
     }
 
     private var chatTabButton: some View {
-        Button {
-            selectedTab = .chat
+        let isSelected = selectedTab == .chat
+        return Button {
+            selectTab(.chat)
         } label: {
-            VStack(spacing: 2) {
-                MainChatTabIcon(isSelected: selectedTab == .chat)
-                Text("Chat")
-                    .font(.caption2.weight(.semibold))
-                    .lineLimit(1)
-                    .foregroundStyle(.blue)
-            }
-            .frame(maxWidth: .infinity)
-            .frame(height: 72)
+            // No caption under this one — the bubble is bigger than the
+            // other icons and raised above the row on its own, which is
+            // enough to read as "the main tab" without a label. A label
+            // would need to sit far below the raised icon to clear it,
+            // which reads as a stray floating word (see log).
+            MainChatTabIcon(isSelected: isSelected)
+                .offset(y: -14)
+                .frame(maxWidth: .infinity)
+                .frame(height: 58)
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Chat")
+        .accessibilityAddTraits(isSelected ? [.isSelected] : [])
+    }
+
+    private func selectTab(_ tab: RootTab) {
+        guard tab != selectedTab else { return }
+        guard !reduceMotion else {
+            selectedTab = tab
+            return
+        }
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        withAnimation(GlassTheme.motionSpring) {
+            selectedTab = tab
+        }
     }
 }
 
@@ -122,20 +172,16 @@ struct MainChatTabIcon: View {
     var isSelected = true
 
     var body: some View {
-        ZStack {
-            Circle()
-                .fill(isSelected ? Color.blue : Color(.secondarySystemBackground))
-                .overlay {
-                    Circle()
-                        .stroke(isSelected ? Color.blue : Color.blue.opacity(0.8), lineWidth: 2)
-                }
-                .shadow(color: .black.opacity(0.18), radius: 8, y: 3)
-            Image(systemName: "bubble.left.and.bubble.right.fill")
-                .font(.system(size: 22, weight: .bold))
-                .foregroundStyle(isSelected ? .white : .blue)
-        }
-        .frame(width: 50, height: 50)
-        .accessibilityHidden(true)
+        Image(systemName: "bubble.left.and.bubble.right.fill")
+            .font(.system(size: 28, weight: .bold))
+            .foregroundStyle(isSelected ? .white : GlassTheme.tint)
+            .frame(width: 64, height: 64)
+            .glassEffect(
+                isSelected ? .regular.tint(GlassTheme.tint).interactive() : .regular.interactive(),
+                in: Circle()
+            )
+            .shadow(color: .black.opacity(0.22), radius: 10, y: 4)
+            .accessibilityHidden(true)
     }
 }
 

@@ -98,6 +98,11 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
+		77C929644E940276D8C63180 /* DesignSystem */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = DesignSystem;
+			sourceTree = "<group>";
+		};
 		C4ACBAFB30374FA900D1D068 /* PrisPilot */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = PrisPilot;
@@ -158,6 +163,7 @@
 				C4ACBB1530374FAC00D1D068 /* PrisPilotUITests */,
 				C4ACBAFA30374FA900D1D068 /* Products */,
 				C4D878963037919B002CD76D /* App */,
+				77C929644E940276D8C63180 /* DesignSystem */,
 				C4D878973037919C002CD76D /* Models */,
 				C4D878983037919C002CD76D /* Store */,
 				C4D878993037919D002CD76D /* Services */,
@@ -305,6 +311,7 @@
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
+				77C929644E940276D8C63180 /* DesignSystem */,
 				C4ACBAFB30374FA900D1D068 /* PrisPilot */,
 			);
 			name = PrisPilot;

@@ -8,6 +8,7 @@ private extension String {
     }
 }
 
+@MainActor
 @Observable
 class AppStore {
     // Settings
@@ -423,12 +424,12 @@ class AppStore {
         }
     }
 
-    private static func welcomeChatMessage() -> ChatMessage {
+    nonisolated private static func welcomeChatMessage() -> ChatMessage {
         let text = "Hi! I'm your PrisPilot assistant. I can help you:\n\n• Track grocery prices across stores\n• Manage shopping lists\n• Plan meals and estimate costs\n• Find the cheapest shopping options\n\nTry: \"I paid kr 39.90 for 400 g minced beef at Kiwi\""
         return ChatMessage(role: .assistant, content: .text(text))
     }
 
-    private static func aiOnboardingMessage() -> ChatMessage {
+    nonisolated private static func aiOnboardingMessage() -> ChatMessage {
         let text = OnboardingFlow.questions.first?.prompt ?? "Let's set up PrisPilot."
         return ChatMessage(role: .assistant, content: .text(text))
     }
