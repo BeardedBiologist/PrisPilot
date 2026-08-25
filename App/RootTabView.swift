@@ -104,7 +104,7 @@ struct RootTabView: View {
                     .frame(height: 58)
                     .accessibilityHidden(true)
 
-                tabButton(.recipes, title: "Recipes", systemImage: "fork.knife", selectedImage: "fork.knife")
+                tabButton(.recipes, title: "Meals", systemImage: "fork.knife", selectedImage: "fork.knife")
                 tabButton(.profile, title: "Profile", systemImage: "person.circle", selectedImage: "person.circle.fill")
             }
             .padding(.horizontal, 12)

@@ -23,6 +23,8 @@ struct AppStoreSnapshot: Codable {
     var communityContributions: [CommunityContribution]
     var shoppingLists: [ShoppingList]
     var recipes: [Recipe]
+    var mealPlans: [MealPlan]
+    var matkasseBoxes: [MatkasseBox]
     var memories: [AIMemory]
     var household: Household?
     var invitations: [Invitation]
@@ -40,6 +42,8 @@ struct AppStoreSnapshot: Codable {
         communityContributions = store.communityContributions
         shoppingLists = store.shoppingLists
         recipes = store.recipes
+        mealPlans = store.mealPlans
+        matkasseBoxes = store.matkasseBoxes
         memories = store.memories
         household = store.household
         invitations = store.invitations
@@ -57,6 +61,8 @@ struct AppStoreSnapshot: Codable {
         case communityContributions
         case shoppingLists
         case recipes
+        case mealPlans
+        case matkasseBoxes
         case memories
         case household
         case invitations
@@ -75,6 +81,8 @@ struct AppStoreSnapshot: Codable {
         communityContributions = try container.decodeIfPresent([CommunityContribution].self, forKey: .communityContributions) ?? []
         shoppingLists = try container.decode([ShoppingList].self, forKey: .shoppingLists)
         recipes = try container.decode([Recipe].self, forKey: .recipes)
+        mealPlans = try container.decodeIfPresent([MealPlan].self, forKey: .mealPlans) ?? []
+        matkasseBoxes = try container.decodeIfPresent([MatkasseBox].self, forKey: .matkasseBoxes) ?? []
         memories = try container.decode([AIMemory].self, forKey: .memories)
         household = try container.decodeIfPresent(Household.self, forKey: .household)
         invitations = try container.decodeIfPresent([Invitation].self, forKey: .invitations) ?? []

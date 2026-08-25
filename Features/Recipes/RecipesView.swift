@@ -2,15 +2,55 @@ import SwiftUI
 
 struct RecipesView: View {
     @Environment(AppStore.self) private var store
+    @State private var showRecipesList = false
+
+    var body: some View {
+        NavigationStack {
+            List {
+                MealPlanView().environment(store)
+            }
+            .reservesFloatingTabBarSpace()
+            .navigationTitle("Meals")
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button { showRecipesList = true } label: {
+                        Image(systemName: "book.closed")
+                    }
+                    .accessibilityLabel("Recipes")
+                }
+            }
+            .sheet(isPresented: $showRecipesList) {
+                RecipesListView().environment(store)
+            }
+        }
+    }
+}
+
+// MARK: - Recipes List (opened from the Meals tab's toolbar)
+
+private enum RecipeFilter: String, CaseIterable, Identifiable {
+    case all = "All"
+    case favorites = "Favorites"
+    var id: String { rawValue }
+}
+
+struct RecipesListView: View {
+    @Environment(AppStore.self) private var store
+    @Environment(\.dismiss) private var dismiss
     @State private var showAddRecipe = false
+    @State private var recipeFilter: RecipeFilter = .all
     @Namespace private var heroSpace
 
+    private var filteredRecipes: [Recipe] {
+        recipeFilter == .favorites ? store.recipes.filter(\.isFavorite) : store.recipes
+    }
+
     private var personalRecipes: [Recipe] {
-        store.recipes.filter { $0.scope == .personal }
+        filteredRecipes.filter { $0.scope == .personal }
     }
 
     private var householdRecipes: [Recipe] {
-        store.recipes.filter { $0.scope == .household }
+        filteredRecipes.filter { $0.scope == .household }
     }
 
     var body: some View {
@@ -23,22 +63,42 @@ struct RecipesView: View {
                         description: Text("Ask me in Chat to create a recipe, or add one manually.")
                     )
                 } else {
-                    if !personalRecipes.isEmpty {
-                        Section("Personal") {
-                            recipeRows(personalRecipes)
+                    Section {
+                        Picker("Filter", selection: $recipeFilter) {
+                            ForEach(RecipeFilter.allCases) { Text($0.rawValue).tag($0) }
                         }
+                        .pickerStyle(.segmented)
                     }
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
 
-                    if !householdRecipes.isEmpty {
-                        Section("Household") {
-                            recipeRows(householdRecipes)
+                    if filteredRecipes.isEmpty {
+                        ContentUnavailableView(
+                            "No Favorites Yet",
+                            systemImage: "heart",
+                            description: Text("Swipe a recipe and tap Favorite to see it here.")
+                        )
+                    } else {
+                        if !personalRecipes.isEmpty {
+                            Section("Personal") {
+                                recipeRows(personalRecipes)
+                            }
+                        }
+
+                        if !householdRecipes.isEmpty {
+                            Section("Household") {
+                                recipeRows(householdRecipes)
+                            }
                         }
                     }
                 }
             }
-            .reservesFloatingTabBarSpace()
             .navigationTitle("Recipes")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Done") { dismiss() }
+                }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button { showAddRecipe = true } label: { Image(systemName: "plus") }
                         .accessibilityLabel("Add recipe")
@@ -259,7 +319,10 @@ struct RecipeDetailView: View {
     }
 }
 
-private struct RecipeCostEstimate {
+/// Not `private` — `Features/Recipes/MealPlanView.swift` reuses this to
+/// estimate a week's grocery cost from planned recipe slots, rather than
+/// re-implementing ingredient-price matching a second time.
+struct RecipeCostEstimate {
     var matchedIngredients: [IngredientCostEstimate]
     var missingIngredients: [RecipeIngredient]
     var storeTotals: [RecipeStoreTotal]
@@ -400,7 +463,7 @@ private struct RecipeCostEstimate {
     }
 }
 
-private struct IngredientCostEstimate: Identifiable {
+struct IngredientCostEstimate: Identifiable {
     var id: UUID { ingredient.id }
     let ingredient: RecipeIngredient
     let observation: PriceObservation
@@ -418,7 +481,7 @@ private struct IngredientCostEstimate: Identifiable {
     }
 }
 
-private enum BulkBuyRisk: Equatable {
+enum BulkBuyRisk: Equatable {
     case none
     case low
     case medium
@@ -452,7 +515,7 @@ private enum BulkBuyRisk: Equatable {
     }
 }
 
-private struct RecipeStoreTotal: Identifiable {
+struct RecipeStoreTotal: Identifiable {
     let id: UUID
     let storeName: String
     let total: Decimal

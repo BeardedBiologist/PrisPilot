@@ -557,6 +557,152 @@ struct RecipeIngredient: Codable, Identifiable {
     }
 }
 
+// MARK: - Meal Planning
+
+extension Calendar {
+    /// Monday-start ISO calendar used consistently for all meal-plan
+    /// week/day math (week-start computation, same-day slot matching) —
+    /// independent of the device's locale-based first weekday, so a
+    /// plan's `weekStartDate` means the same thing regardless of where
+    /// the app runs.
+    static let mealPlanCalendar: Calendar = {
+        var calendar = Calendar(identifier: .iso8601)
+        calendar.timeZone = .current
+        return calendar
+    }()
+}
+
+enum MealType: Codable, Hashable {
+    case breakfast
+    case lunch
+    case dinner
+    case snack
+    case custom(String)
+
+    var displayName: String {
+        switch self {
+        case .breakfast: return "Breakfast"
+        case .lunch: return "Lunch"
+        case .dinner: return "Dinner"
+        case .snack: return "Snack"
+        case .custom(let name): return name
+        }
+    }
+
+    /// Slots a week planner offers by default — a household can add custom
+    /// meal types (e.g. "Kids' Lunch") on top of these later.
+    static let defaultTypes: [MealType] = [.breakfast, .lunch, .dinner]
+}
+
+/// What's actually planned for one meal slot — a saved recipe, a matkasse
+/// meal, a freeform entry that isn't a full recipe, or an honest "eating
+/// out" placeholder so the week plan doesn't pretend every meal is cooked.
+/// Denormalizes a display `title` alongside each ID, matching how
+/// `PriceObservation`/`ShoppingListItem` already keep a display name next
+/// to their ID elsewhere in this file, rather than requiring a live lookup
+/// just to render a slot.
+enum MealSlotContent: Codable {
+    case recipe(recipeID: UUID, title: String)
+    case matkasseMeal(matkasseMealID: UUID, title: String)
+    case freeform(String)
+    case eatingOut(note: String?)
+}
+
+struct MealPlanSlot: Codable, Identifiable {
+    let id: UUID
+    var date: Date
+    var mealType: MealType
+    var content: MealSlotContent
+    /// Cook-once-eat-twice marker — this slot reuses a previous slot's
+    /// cooking rather than needing its own shopping-list contribution.
+    var isLeftover: Bool
+    var notes: String?
+    var createdAt: Date
+
+    init(id: UUID = UUID(), date: Date, mealType: MealType, content: MealSlotContent, isLeftover: Bool = false, notes: String? = nil) {
+        self.id = id
+        self.date = date
+        self.mealType = mealType
+        self.content = content
+        self.isLeftover = isLeftover
+        self.notes = notes
+        self.createdAt = Date()
+    }
+}
+
+struct MealPlan: Codable, Identifiable {
+    let id: UUID
+    var name: String
+    var weekStartDate: Date
+    var scope: DataScope
+    var slots: [MealPlanSlot]
+    var createdAt: Date
+
+    init(id: UUID = UUID(), name: String, weekStartDate: Date, scope: DataScope = .personal) {
+        self.id = id
+        self.name = name
+        self.weekStartDate = weekStartDate
+        self.scope = scope
+        self.slots = []
+        self.createdAt = Date()
+    }
+}
+
+/// One meal included in a matkasse box. Kept distinct from `Recipe` per the
+/// product plan's confirmed decision — matkasse meals can store ingredients
+/// for cost tracking, but shouldn't feed shopping-list generation by
+/// default since the box is already delivering them.
+struct MatkasseMeal: Codable, Identifiable {
+    let id: UUID
+    var title: String
+    var ingredients: [RecipeIngredient]
+    var generatesShoppingListItemsByDefault: Bool
+    var createdAt: Date
+
+    init(id: UUID = UUID(), title: String) {
+        self.id = id
+        self.title = title
+        self.ingredients = []
+        self.generatesShoppingListItemsByDefault = false
+        self.createdAt = Date()
+    }
+}
+
+/// A weekly (or however-often) delivery box from any matkasse provider —
+/// deliberately unbranded per the product plan ("should not be branded to
+/// HelloFresh"); `provider` is free text the user fills in themselves.
+struct MatkasseBox: Codable, Identifiable {
+    let id: UUID
+    var provider: String
+    var deliveryWeekStartDate: Date
+    var numberOfMeals: Int
+    var servingsPerMeal: Int
+    var price: Decimal?
+    var notes: String?
+    var includedMeals: [MatkasseMeal]
+    var createdAt: Date
+
+    init(
+        id: UUID = UUID(),
+        provider: String,
+        deliveryWeekStartDate: Date,
+        numberOfMeals: Int,
+        servingsPerMeal: Int = 2,
+        price: Decimal? = nil,
+        notes: String? = nil
+    ) {
+        self.id = id
+        self.provider = provider
+        self.deliveryWeekStartDate = deliveryWeekStartDate
+        self.numberOfMeals = numberOfMeals
+        self.servingsPerMeal = servingsPerMeal
+        self.price = price
+        self.notes = notes
+        self.includedMeals = []
+        self.createdAt = Date()
+    }
+}
+
 // MARK: - AI Memory
 
 struct AIMemory: Codable, Identifiable {

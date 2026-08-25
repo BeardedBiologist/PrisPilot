@@ -31,6 +31,10 @@ class AppStore {
     // Recipes
     var recipes: [Recipe] = [] { didSet { persistIfReady() } }
 
+    // Meal Planning
+    var mealPlans: [MealPlan] = [] { didSet { persistIfReady() } }
+    var matkasseBoxes: [MatkasseBox] = [] { didSet { persistIfReady() } }
+
     // AI Memory
     var memories: [AIMemory] = [] { didSet { persistIfReady() } }
 
@@ -126,6 +130,8 @@ class AppStore {
         communityContributions = []
         shoppingLists = []
         recipes = []
+        mealPlans = []
+        matkasseBoxes = []
         memories = []
         household = nil
         invitations = []
@@ -231,6 +237,8 @@ class AppStore {
         communityContributions = snapshot.communityContributions
         shoppingLists = snapshot.shoppingLists
         recipes = snapshot.recipes
+        mealPlans = snapshot.mealPlans
+        matkasseBoxes = snapshot.matkasseBoxes
         memories = snapshot.memories
         household = snapshot.household
         invitations = snapshot.invitations
@@ -1451,6 +1459,76 @@ class AppStore {
     private func shoppingListItemIndex(in listIdx: Int, matchingProduct productName: String) -> Int? {
         let target = productName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         return shoppingLists[listIdx].items.firstIndex { $0.productName.lowercased() == target }
+    }
+
+    // MARK: - Meal Planning
+
+    func mealPlan(forWeekStartDate weekStartDate: Date) -> MealPlan? {
+        mealPlans.first { Calendar.mealPlanCalendar.isDate($0.weekStartDate, inSameDayAs: weekStartDate) }
+    }
+
+    /// The Monday that starts the ISO week containing `date` — every slot
+    /// lives on the `MealPlan` for its own day's week, so a day/fortnight/
+    /// month view spanning multiple weeks reads/writes across several
+    /// `MealPlan` records transparently rather than needing one plan per
+    /// view range.
+    func weekStartDate(for date: Date) -> Date {
+        Calendar.mealPlanCalendar.dateInterval(of: .weekOfYear, for: date)?.start ?? date
+    }
+
+    @discardableResult
+    private func findOrCreateMealPlan(forDate date: Date) -> MealPlan {
+        let weekStart = weekStartDate(for: date)
+        if let existing = mealPlan(forWeekStartDate: weekStart) {
+            return existing
+        }
+        let plan = MealPlan(
+            name: "Week of \(weekStart.formatted(date: .abbreviated, time: .omitted))",
+            weekStartDate: weekStart
+        )
+        mealPlans.append(plan)
+        return plan
+    }
+
+    /// Creates or replaces the slot for a given day + meal type — a meal
+    /// plan holds at most one slot per (date, mealType) pair, so setting a
+    /// slot that's already occupied overwrites its content rather than
+    /// adding a second one.
+    func setMealPlanSlot(date: Date, mealType: MealType, content: MealSlotContent, isLeftover: Bool = false, notes: String? = nil) {
+        let plan = findOrCreateMealPlan(forDate: date)
+        guard let planIdx = mealPlans.firstIndex(where: { $0.id == plan.id }) else { return }
+        if let slotIdx = mealPlans[planIdx].slots.firstIndex(where: {
+            Calendar.mealPlanCalendar.isDate($0.date, inSameDayAs: date) && $0.mealType == mealType
+        }) {
+            mealPlans[planIdx].slots[slotIdx].content = content
+            mealPlans[planIdx].slots[slotIdx].isLeftover = isLeftover
+            mealPlans[planIdx].slots[slotIdx].notes = notes
+        } else {
+            let slot = MealPlanSlot(date: date, mealType: mealType, content: content, isLeftover: isLeftover, notes: notes)
+            mealPlans[planIdx].slots.append(slot)
+        }
+        persistNow()
+    }
+
+    func clearMealPlanSlot(date: Date, mealType: MealType) {
+        let weekStart = weekStartDate(for: date)
+        guard let planIdx = mealPlans.firstIndex(where: { Calendar.mealPlanCalendar.isDate($0.weekStartDate, inSameDayAs: weekStart) }) else { return }
+        mealPlans[planIdx].slots.removeAll {
+            Calendar.mealPlanCalendar.isDate($0.date, inSameDayAs: date) && $0.mealType == mealType
+        }
+        persistNow()
+    }
+
+    /// Every slot from every `MealPlan` whose date falls within `dates` —
+    /// used by the planner to compute summary stats and calendar dots
+    /// across a range that may span several `MealPlan` (week) records.
+    func mealPlanSlots(on dates: [Date]) -> [MealPlanSlot] {
+        let dayKeys = Set(dates.map { Calendar.mealPlanCalendar.startOfDay(for: $0) })
+        let weekStarts = Set(dates.map { weekStartDate(for: $0) })
+        return weekStarts
+            .compactMap { mealPlan(forWeekStartDate: $0) }
+            .flatMap { $0.slots }
+            .filter { dayKeys.contains(Calendar.mealPlanCalendar.startOfDay(for: $0.date)) }
     }
 
     // MARK: - Seed Data

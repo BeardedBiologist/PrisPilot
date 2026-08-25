@@ -7,6 +7,244 @@ the top. Each entry: what changed, why, how it was verified, what's next.
 
 ---
 
+## 2026-08-25 — Phase 11 (Meals: week planner UI) implemented
+
+`xcodebuild ... build` → **BUILD SUCCEEDED**. This is the first phase where
+`MealPlan`/`MealPlanSlot` (Phase 10) get real UI.
+
+**`Models/AppModels.swift`:** added `Calendar.mealPlanCalendar` — a
+Monday-start ISO calendar used everywhere meal-plan date math happens
+(week-start computation, same-day slot lookups), so a plan's
+`weekStartDate` means the same thing regardless of the device's own
+locale/first-weekday setting.
+
+**`Features/Recipes/RecipesView.swift`:**
+- `RecipeCostEstimate` (and its three supporting private types
+  `IngredientCostEstimate`, `BulkBuyRisk`, `RecipeStoreTotal`) un-privated
+  — mechanical visibility change only, no logic touched — so the new
+  planner file can reuse the exact same ingredient-price-matching machinery
+  for the week's grocery estimate instead of a second copy.
+- Root view restructured around a new `MealsSegment` (Plan/Recipes)
+  segmented control. **Plan is now the default/first segment** shown when
+  the tab opens, matching the product plan's "Recommended first screen:
+  1. Meal plan calendar" — Recipes browsing moved to the second segment
+  rather than being the tab's whole identity anymore.
+- Recipes segment gained a lightweight `RecipeFilter` (All/Favorites)
+  toggle. **Scoped down from the phase plan's literal "Favorites/Recent/
+  Tags filtering"** — Recent would need meal-plan-history-based inference
+  and Tags would need a filter-chip UI neither of which felt worth adding
+  in the same pass as the planner itself; Favorites alone (already a real
+  field on `Recipe`) was the highest-value, lowest-effort piece. Flagging
+  the trim rather than quietly shipping partial credit as if it were the
+  full ask.
+
+**New file `Features/Recipes/MealPlanView.swift`** (registered in
+`project.pbxproj`, same four-piece wiring as every prior new file this
+session):
+- `MealPlanView`'s `body` returns `Section`s directly (not an owning
+  `List`) so it composes straight into `RecipesView`'s existing `List`
+  rather than nesting a scroll view inside a scroll view.
+- Week navigation (prev/next chevrons, date range label, a "This Week"
+  shortcut that only appears when viewing a different week), a horizontal
+  stat-tile summary row (planned/matkasse-covered/open/grocery-estimate/
+  missing-price counts — grocery estimate and missing-price count both
+  computed via `RecipeCostEstimate` per recipe-content slot, summed for
+  the week), and one `Section` per day of the week, each with a tappable
+  row per default meal type (breakfast/lunch/dinner).
+- **Deliberately shipped with only `MealType.defaultTypes` (no custom
+  meal-type UI yet)** — the phase plan's task text mentioned "custom per
+  user selection" but building meal-type management (add/rename/reorder
+  custom types) felt like its own small feature, not a natural fit
+  bundled into the same diff as the planner grid itself. Noted here as a
+  disclosed scope trim, same as the Favorites-only recipe filter above.
+- `MealSlotEditorSheet`: a segmented Recipe/Matkasse/Freeform/Eating-Out
+  picker per slot, backed by `AppStore.setMealPlanSlot`/`clearMealPlanSlot`
+  (new this phase — create-or-replace-by-(date,mealType) semantics, since
+  a meal plan holds at most one slot per day+type). The "Eating Out" case
+  exists specifically so a week plan doesn't have to pretend every night
+  is a cooked meal, per the product plan's confirmed decision. A
+  "Leftovers" toggle marks cook-once-eat-twice slots without requiring a
+  second full recipe entry.
+
+**`Store/AppStore.swift`:** `mealPlan(forWeekStartDate:)`,
+`findOrCreateMealPlan` (private — only write paths create a plan; viewing
+an empty week never silently creates one), `setMealPlanSlot`,
+`clearMealPlanSlot`. All keyed through `Calendar.mealPlanCalendar` for
+consistent day/week matching.
+
+**Not committed.** Changed: `Features/Recipes/MealPlanView.swift` (new),
+`Features/Recipes/RecipesView.swift`, `Models/AppModels.swift`,
+`PrisPilot.xcodeproj/project.pbxproj`, `Store/AppStore.swift`.
+
+### What's next
+
+Review checkpoint: Josh to open the Meals tab (now defaults to the Plan
+segment), tap a meal slot to assign a recipe/freeform/eating-out entry,
+confirm the week summary numbers update, navigate prev/next week, and
+switch to the Recipes segment to confirm browsing/favoriting/adding
+recipes still all work exactly as before. Matkasse slot assignment will
+show "No matkasse boxes yet" until Phase 12 adds a way to create one —
+that's expected, not a bug. Once confirmed, Phase 12 (Meals: shopping-list
+generation + matkasse UI) is next.
+
+---
+
+## 2026-08-25 — Phase 11 revision: Recipes moved to its own page, planner gained Day/Week/Fortnight/Month + List/Calendar
+
+Josh's feedback on the first Phase 11 pass: Recipes shouldn't be a segment
+sharing the Meals root screen — it should be a toolbar icon (matching how
+Prices' top-right icons work) that opens its own page, with the "+" Add
+Recipe button moving onto that page; and the planner itself needed a real
+range/view-mode toggle (Day/Week/Fortnight/Month, List/Calendar), not just
+a fixed week list. This goes further than the phase plan's original Phase
+11 scope (which explicitly deferred fortnight/month) — implemented now
+since it's what was actually asked for, rather than sticking rigidly to a
+plan document written before seeing the UI live. `xcodebuild ... build` →
+**BUILD SUCCEEDED** after each step of this revision.
+
+**`Features/Recipes/RecipesView.swift`** restructured:
+- `RecipesView` (the Meals tab root) is now *just* the planner — no
+  segmented control. Toolbar gained a "book.closed" icon
+  (`.accessibilityLabel("Recipes")`, same trailing-toolbar-icon pattern
+  Prices already uses for its scan/add buttons) that presents a new
+  `RecipesListView` as a sheet.
+- `RecipesListView` (new, in the same file): the old recipe browser
+  content — Personal/Household sections, the Favorites filter, and swipe-
+  to-delete/favorite — now living in its own `NavigationStack` with its
+  own "Done" + "+" (Add Recipe) toolbar buttons. Moving the "+" here was
+  the explicit ask; it also just makes more sense next to the content it
+  actually adds to.
+
+**`Store/AppStore.swift`** meal-plan API reworked to support ranges that
+span multiple weeks: `setMealPlanSlot`/`clearMealPlanSlot` no longer take
+an explicit `weekStartDate` parameter — they resolve it internally per
+`date` via a new `weekStartDate(for:)` helper, since a fortnight or month
+view's days can belong to several different `MealPlan` (one-per-week)
+records. New `mealPlanSlots(on dates: [Date]) -> [MealPlanSlot]` aggregates
+slots correctly across however many weeks a given view range touches, used
+by the planner for both summary stats and calendar dots.
+
+**`Features/Recipes/MealPlanView.swift`** rewritten:
+- New `PlannerRange` (Day/Week/Fortnight/Month, `internal` — not
+  `private`, matching how the file's other reusable pieces are scoped) and
+  `PlannerViewMode` (List/Calendar). Navigation step size and the visible
+  `days` array both derive from `range`; the "This Week"/"This Fortnight"/
+  etc. reset button label and the header date-range text both adapt too.
+  `anchorDate` is a single underlying `Date` shared across range switches
+  (switching from Week to Month jumps to the month *containing* wherever
+  you were, rather than resetting to today) — avoids extra state-sync
+  logic between range representations.
+- Calendar toggle is hidden for Day range (a 1-cell grid isn't
+  meaningful) — List is forced in that case.
+- New `MealCalendarGrid`: a 7-column grid with a Mon–Sun header row, each
+  day cell showing the day number and up to 3 small color-coded dots (one
+  per default meal type that has a slot). Month view pads leading blank
+  cells so the 1st lands under its real weekday column
+  (`leadingBlankCount`, computed from the ISO weekday of the range's first
+  day). Tapping a cell opens a new `DayMealsSheet` — a compact list of
+  that day's 3 meal-type rows (reusing the same `MealSlotRow` the list
+  layout uses) — rather than trying to fit per-meal-type tap targets
+  inside a small grid cell.
+- `contentTitle`/`contentIcon`/`contentColor` (per-`MealSlotContent`
+  display helpers, needed by both the list row and the day-detail sheet)
+  extracted to file-scope `private func`s rather than duplicated — briefly
+  landed as non-`private` by mistake during the rewrite (would have put
+  three very generically-named functions at module scope, a latent
+  collision risk), caught and fixed before considering this done by
+  grepping the rest of the codebase for the same names.
+
+**Not committed.** Changed: `Features/Recipes/MealPlanView.swift`,
+`Features/Recipes/RecipesView.swift`, `Store/AppStore.swift`.
+
+### What's next
+
+Review checkpoint: Josh to check the "book.closed" icon opens Recipes as
+its own page with a working "+" there; the Range picker across all four
+values with Prev/Next navigation at each; the List/Calendar toggle
+(disabled for Day); tapping a calendar day cell opens the compact day
+sheet correctly; and that switching range/view mode doesn't lose track of
+which slots are already planned. Once confirmed, Phase 12 (Meals:
+shopping-list generation + matkasse UI) continues — this revision didn't
+touch matkasse creation, so "No matkasse boxes yet" in the slot editor is
+still expected until then.
+
+---
+
+## 2026-08-25 — Phase 10 (Meals: rename + data model) implemented
+
+Josh confirmed Phase 9 looks good. `xcodebuild ... build` → **BUILD
+SUCCEEDED**. This starts the Meals block — no new UI yet, same
+foundation-first approach as Shopping's Phase 1.
+
+Note: `PrisPilot.xcodeproj/project.pbxproj` changed on disk between Phase 9
+and this phase (Josh presumably opened the project in Xcode) — took the
+on-disk version as current per the harness's own guidance rather than
+reverting anything; diffed it against what this session last wrote and it
+still contained every file this session added, nothing looked wrong.
+
+**`Models/AppModels.swift`** — new `// MARK: - Meal Planning` section:
+- `MealType` (breakfast/lunch/dinner/snack/`custom(String)`) — `Codable,
+  Hashable`, `.defaultTypes` gives the three-slot starting point the
+  product plan's confirmed decisions call for, with room for
+  household-added custom types layered on top later.
+- `MealSlotContent` — `.recipe`/`.matkasseMeal`/`.freeform`/`.eatingOut`,
+  each denormalizing a display title/note alongside any ID, matching how
+  `PriceObservation`/`ShoppingListItem` already keep a display name next to
+  their ID elsewhere in this file (not a new convention, just applied
+  consistently). The `.eatingOut` case exists specifically so a week plan
+  can stay honest about takeaway nights instead of only ever representing
+  "a meal" as something cooked.
+- `MealPlanSlot` (date, `mealType`, `content`, `isLeftover`, `notes`) and
+  `MealPlan` (name, `weekStartDate`, scope, `slots`).
+- `MatkasseMeal` (title, ingredients, `generatesShoppingListItemsByDefault`
+  — defaults `false` per the product plan's confirmed decision) and
+  `MatkasseBox` (provider as free text — deliberately unbranded, delivery
+  week, meal/serving counts, price, notes, `includedMeals`).
+
+**`Store/AppStore.swift`:** `mealPlans: [MealPlan]` and
+`matkasseBoxes: [MatkasseBox]` added alongside `recipes`, same
+`didSet { persistIfReady() }` pattern as every other array. Wired into
+both `deleteAllLocalData()` and `restore(from:)` — easy to forget one of
+these two and have the new arrays silently not reset/restore correctly.
+
+**`Store/SwiftDataPersistence.swift`:** `AppStoreSnapshot` gained both
+arrays as stored properties, `CodingKeys` cases, and — this is the
+persistence trap flagged all the way back in the Phase 1 log entry's
+"Current foundation" notes — `decodeIfPresent([...].self, ...) ?? []` in
+the custom `init(from:)` rather than plain `decode`, so Josh's existing
+saved snapshot (which predates these two fields) decodes cleanly instead
+of failing and silently wiping his data on next launch. Confirmed via the
+actual build (not just SourceKit, which threw a spurious "does not conform
+to Encodable" diagnostic on this file that the real compiler didn't agree
+with) that the synthesized `encode(to:)` picked up the two new stored
+properties automatically — no manual encode code needed, only the decode
+side needed the explicit fallback.
+
+**Rename:** `App/RootTabView.swift`'s tab label "Recipes" → "Meals"
+(`RootTab.recipes` enum case and file names deliberately left alone per
+the phase plan — renaming those is a bigger, purely-cosmetic diff that can
+happen anytime without blocking new feature work). Also updated
+`Features/Recipes/RecipesView.swift`'s `.navigationTitle` from "Recipes" to
+"Meals" — not explicitly called out in the phase plan's task list, but the
+screen title reading "Recipes" right under a tab labeled "Meals" would
+have been an obvious, easy-to-miss inconsistency.
+
+**Not committed.** Changed: `App/RootTabView.swift`,
+`Features/Recipes/RecipesView.swift`, `Models/AppModels.swift`,
+`Store/AppStore.swift`, `Store/SwiftDataPersistence.swift`.
+
+### What's next
+
+Review checkpoint: nothing new to click through this phase (pure data
+model), but worth Josh confirming the tab now reads "Meals" and the screen
+title matches, and that existing recipe browsing/creation/detail/cost
+estimation still all work exactly as before (this phase touched
+`RecipesView.swift` for one string only). Once confirmed, Phase 11 (Meals:
+week planner UI) is next — the actual calendar/planner screen, which is
+where `MealPlan`/`MealPlanSlot` get their first real UI.
+
+---
+
 ## 2026-08-25 — Phase 9 (Prices: AI actions expansion) implemented
 
 Josh confirmed Phase 8 looks good. `xcodebuild ... build` → **BUILD
