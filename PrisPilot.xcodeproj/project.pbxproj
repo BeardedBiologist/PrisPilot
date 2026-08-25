@@ -7,7 +7,11 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		4B95E991C60E585BAE63B2F8 /* StoreDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 570F82246B064D17490FB436 /* StoreDetailView.swift */; };
+		8A302494294082FC58A62EA8 /* InStoreModeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD42CDA3F2E6E5B51AEA2869 /* InStoreModeView.swift */; };
+		8C431DAC4E0B91AE06ACF959 /* ShoppingOverviewComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6F33978FF4323144CC8E191 /* ShoppingOverviewComponents.swift */; };
 		C44DE10E303E15310082FD4C /* AIScopePolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = C44DE10D303E15310082FD4C /* AIScopePolicy.swift */; };
+		C44DE1D1303E315B0082FD4C /* SpeechInputService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C44DE1D0303E315B0082FD4C /* SpeechInputService.swift */; };
 		C45E009230377ABD0021D7F2 /* OnboardingFlow.swift in Sources */ = {isa = PBXBuildFile; fileRef = C45E009130377ABD0021D7F2 /* OnboardingFlow.swift */; };
 		C45E0094303782730021D7F2 /* SwiftDataPersistence.swift in Sources */ = {isa = PBXBuildFile; fileRef = C45E0093303782730021D7F2 /* SwiftDataPersistence.swift */; };
 		C473BA1C3038622200C67296 /* AuthModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = C473BA1B3038622200C67296 /* AuthModels.swift */; };
@@ -28,10 +32,6 @@
 		C4CCD189303753FB00157B4E /* ActionProposalView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4CCD188303753FB00157B4E /* ActionProposalView.swift */; };
 		C4CCD18B3037540300157B4E /* ActivityTagView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4CCD18A3037540300157B4E /* ActivityTagView.swift */; };
 		C4CCD18D3037541100157B4E /* ShoppingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4CCD18C3037541100157B4E /* ShoppingView.swift */; };
-		8C431DAC4E0B91AE06ACF959 /* ShoppingOverviewComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6F33978FF4323144CC8E191 /* ShoppingOverviewComponents.swift */; };
-		D30E3B14B0571AEC0A255492 /* ShoppingListDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C78443DD829E9A36C2A01A7B /* ShoppingListDetailView.swift */; };
-		8A302494294082FC58A62EA8 /* InStoreModeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD42CDA3F2E6E5B51AEA2869 /* InStoreModeView.swift */; };
-		4B95E991C60E585BAE63B2F8 /* StoreDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 570F82246B064D17490FB436 /* StoreDetailView.swift */; };
 		C4CCD18F3037541E00157B4E /* PricesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4CCD18E3037541E00157B4E /* PricesView.swift */; };
 		C4CCD1913037542900157B4E /* RecipesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4CCD1903037542900157B4E /* RecipesView.swift */; };
 		C4CCD1933037543700157B4E /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4CCD1923037543700157B4E /* SettingsView.swift */; };
@@ -44,6 +44,7 @@
 		C4CCD1A130375A4500157B4E /* ManualEntrySheets.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4CCD1A030375A4500157B4E /* ManualEntrySheets.swift */; };
 		C4CCD1A330375A5E00157B4E /* PriceComparisonView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4CCD1A230375A5E00157B4E /* PriceComparisonView.swift */; };
 		C4D8788F3037897E002CD76D /* PrisPilotApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4D8788D3037897E002CD76D /* PrisPilotApp.swift */; };
+		D30E3B14B0571AEC0A255492 /* ShoppingListDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C78443DD829E9A36C2A01A7B /* ShoppingListDetailView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -64,7 +65,10 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		570F82246B064D17490FB436 /* StoreDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoreDetailView.swift; sourceTree = "<group>"; };
+		BD42CDA3F2E6E5B51AEA2869 /* InStoreModeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InStoreModeView.swift; sourceTree = "<group>"; };
 		C44DE10D303E15310082FD4C /* AIScopePolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIScopePolicy.swift; sourceTree = "<group>"; };
+		C44DE1D0303E315B0082FD4C /* SpeechInputService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechInputService.swift; sourceTree = "<group>"; };
 		C45E009130377ABD0021D7F2 /* OnboardingFlow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingFlow.swift; sourceTree = "<group>"; };
 		C45E0093303782730021D7F2 /* SwiftDataPersistence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftDataPersistence.swift; sourceTree = "<group>"; };
 		C473BA1B3038622200C67296 /* AuthModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthModels.swift; sourceTree = "<group>"; };
@@ -89,10 +93,6 @@
 		C4CCD188303753FB00157B4E /* ActionProposalView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActionProposalView.swift; sourceTree = "<group>"; };
 		C4CCD18A3037540300157B4E /* ActivityTagView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityTagView.swift; sourceTree = "<group>"; };
 		C4CCD18C3037541100157B4E /* ShoppingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShoppingView.swift; sourceTree = "<group>"; };
-		D6F33978FF4323144CC8E191 /* ShoppingOverviewComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShoppingOverviewComponents.swift; sourceTree = "<group>"; };
-		C78443DD829E9A36C2A01A7B /* ShoppingListDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShoppingListDetailView.swift; sourceTree = "<group>"; };
-		BD42CDA3F2E6E5B51AEA2869 /* InStoreModeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InStoreModeView.swift; sourceTree = "<group>"; };
-		570F82246B064D17490FB436 /* StoreDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoreDetailView.swift; sourceTree = "<group>"; };
 		C4CCD18E3037541E00157B4E /* PricesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PricesView.swift; sourceTree = "<group>"; };
 		C4CCD1903037542900157B4E /* RecipesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecipesView.swift; sourceTree = "<group>"; };
 		C4CCD1923037543700157B4E /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
@@ -105,6 +105,8 @@
 		C4CCD1A030375A4500157B4E /* ManualEntrySheets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManualEntrySheets.swift; sourceTree = "<group>"; };
 		C4CCD1A230375A5E00157B4E /* PriceComparisonView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PriceComparisonView.swift; sourceTree = "<group>"; };
 		C4D8788D3037897E002CD76D /* PrisPilotApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrisPilotApp.swift; sourceTree = "<group>"; };
+		C78443DD829E9A36C2A01A7B /* ShoppingListDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShoppingListDetailView.swift; sourceTree = "<group>"; };
+		D6F33978FF4323144CC8E191 /* ShoppingOverviewComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShoppingOverviewComponents.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -232,6 +234,7 @@
 				C4CCD1963037571D00157B4E /* KeychainService.swift */,
 				C4CCD19C3037583D00157B4E /* APIKeys.swift */,
 				C44DE10D303E15310082FD4C /* AIScopePolicy.swift */,
+				C44DE1D0303E315B0082FD4C /* SpeechInputService.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -461,6 +464,7 @@
 				C4CCD1913037542900157B4E /* RecipesView.swift in Sources */,
 				C4CCD1793037535000157B4E /* AITypes.swift in Sources */,
 				C4CCD1933037543700157B4E /* SettingsView.swift in Sources */,
+				C44DE1D1303E315B0082FD4C /* SpeechInputService.swift in Sources */,
 				C4CCD187303753E700157B4E /* MessageBubbleView.swift in Sources */,
 				C4CCD1973037571D00157B4E /* KeychainService.swift in Sources */,
 				C473BA203038624500C67296 /* AccountView.swift in Sources */,
@@ -657,6 +661,8 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSCameraUsageDescription = "PrisPilot uses the camera to scan barcodes and receipts.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "PrisPilot uses the microphone for chat ";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "PrisPilot uses this to dictate";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -690,6 +696,8 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSCameraUsageDescription = "PrisPilot uses the camera to scan barcodes and receipts.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "PrisPilot uses the microphone for chat ";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "PrisPilot uses this to dictate";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;

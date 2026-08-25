@@ -5,6 +5,7 @@ struct ChatView: View {
     @Environment(\.floatingTabBarInset) private var floatingTabBarInset
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var viewModel = ChatViewModel(appStore: .shared)
+    @State private var speechInput = SpeechInputService()
     @FocusState private var inputFocused: Bool
     @State private var sendBounce = false
 
@@ -25,6 +26,19 @@ struct ChatView: View {
             .toolbar(.hidden, for: .navigationBar)
             .onAppear {
                 store.ensureDefaultChatSession()
+            }
+            .onDisappear {
+                speechInput.stopRecording()
+            }
+            .onChange(of: speechInput.transcript) { _, transcript in
+                viewModel.inputText = transcript
+            }
+            .alert("Speech Input", isPresented: speechErrorBinding) {
+                Button("OK", role: .cancel) {
+                    speechInput.errorMessage = nil
+                }
+            } message: {
+                Text(speechInput.errorMessage ?? "")
             }
         }
     }
@@ -165,6 +179,18 @@ struct ChatView: View {
                 }
             }
 
+            if speechInput.isRecording {
+                HStack(spacing: 6) {
+                    Image(systemName: "waveform")
+                        .symbolEffect(.variableColor.iterative, options: .repeating, isActive: speechInput.isRecording)
+                    Text("Listening...")
+                }
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.red)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 4)
+            }
+
             HStack(alignment: .bottom, spacing: 10) {
                 TextField("Ask PrisPilot...", text: $viewModel.inputText, axis: .vertical)
                     .textFieldStyle(.plain)
@@ -179,6 +205,28 @@ struct ChatView: View {
                     }
 
                 Button {
+                    Task {
+                        inputFocused = false
+                        await speechInput.toggleRecording(seedText: viewModel.inputText)
+                    }
+                } label: {
+                    Image(systemName: speechInput.isRecording ? "stop.fill" : "mic.fill")
+                        .font(.system(size: 17, weight: .bold))
+                        .foregroundStyle(speechInput.isRecording ? .white : GlassTheme.tint)
+                        .frame(width: 42, height: 42)
+                        .glassEffect(
+                            speechInput.isRecording ? .regular.tint(.red).interactive() : .regular.interactive(),
+                            in: Circle()
+                        )
+                        .contentTransition(.symbolEffect(.replace))
+                        .symbolEffectsRemoved(reduceMotion)
+                }
+                .buttonStyle(.plain)
+                .disabled(viewModel.isSending)
+                .accessibilityLabel(speechInput.isRecording ? "Stop dictation" : "Start dictation")
+
+                Button {
+                    speechInput.stopRecording()
                     sendBounce.toggle()
                     viewModel.sendMessage()
                     inputFocused = false
@@ -211,6 +259,16 @@ struct ChatView: View {
 
     private var canSend: Bool {
         !viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !viewModel.isSending
+    }
+
+    private var speechErrorBinding: Binding<Bool> {
+        Binding {
+            speechInput.errorMessage != nil
+        } set: { isPresented in
+            if !isPresented {
+                speechInput.errorMessage = nil
+            }
+        }
     }
 }
 
