@@ -55,6 +55,11 @@ class ChatViewModel {
             return
         }
 
+        if let scopedResponse = AIScopePolicy.localRefusal(for: text) {
+            handleResponse(scopedResponse, in: sessionID)
+            return
+        }
+
         isSending = true
         isTyping = true
 

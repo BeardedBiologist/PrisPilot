@@ -86,17 +86,32 @@ struct RootTabView: View {
     }
 
     private var customTabBar: some View {
-        GlassEffectContainer(spacing: GlassTheme.containerSpacing) {
+        ZStack(alignment: .top) {
+            GlassEffectContainer(spacing: GlassTheme.containerSpacing) {
+                Color.clear
+                    .frame(height: 92)
+                    .glassEffect(.regular, in: RaisedTabBarBackground())
+            }
+
             HStack(alignment: .center, spacing: 2) {
                 tabButton(.shopping, title: "Shopping", systemImage: "cart", selectedImage: "cart.fill")
                 tabButton(.prices, title: "Prices", systemImage: "tag", selectedImage: "tag.fill")
-                chatTabButton
+
+                Color.clear
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 58)
+                    .accessibilityHidden(true)
+
                 tabButton(.recipes, title: "Recipes", systemImage: "fork.knife", selectedImage: "fork.knife")
                 tabButton(.profile, title: "Profile", systemImage: "person.circle", selectedImage: "person.circle.fill")
             }
             .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .glassEffect(.regular, in: Capsule())
+            .padding(.top, 28)
+            .padding(.bottom, 6)
+
+            chatTabButton
+                .frame(width: 84, height: 72)
+                .zIndex(1)
         }
         .padding(.horizontal, 16)
         .padding(.bottom, 8)
@@ -146,9 +161,7 @@ struct RootTabView: View {
             // would need to sit far below the raised icon to clear it,
             // which reads as a stray floating word (see log).
             MainChatTabIcon(isSelected: isSelected)
-                .offset(y: -14)
-                .frame(maxWidth: .infinity)
-                .frame(height: 58)
+                .frame(width: 72, height: 72)
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Chat")
@@ -165,6 +178,32 @@ struct RootTabView: View {
         withAnimation(GlassTheme.motionSpring) {
             selectedTab = tab
         }
+    }
+}
+
+private struct RaisedTabBarBackground: Shape {
+    func path(in rect: CGRect) -> Path {
+        let cornerRadius: CGFloat = 36
+        let barTop: CGFloat = 26
+        let bumpRadius = min(rect.width * 0.13, 42)
+        let bumpCenter = CGPoint(x: rect.midX, y: 40)
+
+        let barRect = CGRect(
+            x: rect.minX,
+            y: rect.minY + barTop,
+            width: rect.width,
+            height: rect.height - barTop
+        )
+
+        var path = Path()
+        path.addRoundedRect(in: barRect, cornerSize: CGSize(width: cornerRadius, height: cornerRadius))
+        path.addEllipse(in: CGRect(
+            x: bumpCenter.x - bumpRadius,
+            y: bumpCenter.y - bumpRadius,
+            width: bumpRadius * 2,
+            height: bumpRadius * 2
+        ))
+        return path
     }
 }
 

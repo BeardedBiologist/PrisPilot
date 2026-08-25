@@ -24,6 +24,10 @@ class MockAIService: AIService, OnboardingAIService {
             )
         }
 
+        if let scopedResponse = AIScopePolicy.localRefusal(for: lastMessage.content) {
+            return scopedResponse
+        }
+
         return generateResponse(for: lastMessage.content.lowercased(), context: context)
     }
 
@@ -187,12 +191,21 @@ class MockAIService: AIService, OnboardingAIService {
     }
 
     private func recipeShoppingResponse(input: String) -> AIResponse {
-        let tacoItems = ["Minced beef", "Taco shells", "Salsa", "Sour cream", "Cheddar cheese", "Lettuce", "Tomatoes", "Santa Maria seasoning"]
+        let tacoItems = [
+            ("🥩", "Minced beef"),
+            ("🌮", "Taco shells"),
+            ("🍅", "Salsa"),
+            ("🥛", "Sour cream"),
+            ("🧀", "Cheddar cheese"),
+            ("🥬", "Lettuce"),
+            ("🍅", "Tomatoes"),
+            ("🌶️", "Santa Maria seasoning")
+        ]
 
-        let actions = tacoItems.map { item in
+        let actions = tacoItems.map { emoji, item in
             ProposedAction(
                 type: .addShoppingListItem,
-                summary: "Add \(item) to Taco Night",
+                summary: "Add \(emoji) \(item) to Taco Night",
                 payload: .addShoppingListItem(
                     listName: "Taco Night",
                     productName: item,
@@ -204,7 +217,7 @@ class MockAIService: AIService, OnboardingAIService {
         }
 
         return AIResponse(
-            textContent: "Here's a taco shopping list for 4 people. Based on the prices I know, Kiwi Majorstuen is the cheapest option for most of these items.",
+            textContent: "🌮 Taco Night for 4: 🥩 minced beef, 🌮 shells, 🍅 salsa, 🥛 sour cream, 🧀 cheddar, 🥬 lettuce, and 🍅 tomatoes. Based on the prices I know, Kiwi Majorstuen is cheapest for most of these.",
             proposedActions: actions,
             memoryProposals: [],
             error: nil

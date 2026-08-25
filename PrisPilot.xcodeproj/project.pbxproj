@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		C44DE10E303E15310082FD4C /* AIScopePolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = C44DE10D303E15310082FD4C /* AIScopePolicy.swift */; };
 		C45E009230377ABD0021D7F2 /* OnboardingFlow.swift in Sources */ = {isa = PBXBuildFile; fileRef = C45E009130377ABD0021D7F2 /* OnboardingFlow.swift */; };
 		C45E0094303782730021D7F2 /* SwiftDataPersistence.swift in Sources */ = {isa = PBXBuildFile; fileRef = C45E0093303782730021D7F2 /* SwiftDataPersistence.swift */; };
 		C473BA1C3038622200C67296 /* AuthModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = C473BA1B3038622200C67296 /* AuthModels.swift */; };
@@ -59,6 +60,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		C44DE10D303E15310082FD4C /* AIScopePolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIScopePolicy.swift; sourceTree = "<group>"; };
 		C45E009130377ABD0021D7F2 /* OnboardingFlow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingFlow.swift; sourceTree = "<group>"; };
 		C45E0093303782730021D7F2 /* SwiftDataPersistence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftDataPersistence.swift; sourceTree = "<group>"; };
 		C473BA1B3038622200C67296 /* AuthModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthModels.swift; sourceTree = "<group>"; };
@@ -221,6 +223,7 @@
 				C4CCD19A3037575800157B4E /* GeminiAIService.swift */,
 				C4CCD1963037571D00157B4E /* KeychainService.swift */,
 				C4CCD19C3037583D00157B4E /* APIKeys.swift */,
+				C44DE10D303E15310082FD4C /* AIScopePolicy.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -449,6 +452,7 @@
 				C4CCD187303753E700157B4E /* MessageBubbleView.swift in Sources */,
 				C4CCD1973037571D00157B4E /* KeychainService.swift in Sources */,
 				C473BA203038624500C67296 /* AccountView.swift in Sources */,
+				C44DE10E303E15310082FD4C /* AIScopePolicy.swift in Sources */,
 				C4CCD1993037572800157B4E /* GeminiAPITypes.swift in Sources */,
 				C4CCD181303753AD00157B4E /* ChatModels.swift in Sources */,
 				C4CCD18D3037541100157B4E /* ShoppingView.swift in Sources */,
