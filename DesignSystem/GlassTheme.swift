@@ -54,6 +54,12 @@ extension EnvironmentValues {
     /// `RootTabView` to its own tab-switching logic; defaults to a no-op so
     /// previews and any view rendered outside `RootTabView` don't crash.
     @Entry var switchToChatTab: () -> Void = {}
+
+    /// Same idea as `switchToChatTab`, but for Settings — used by read-only
+    /// settings readouts (e.g. Shopping's optimization controls) that link
+    /// out to where the value is actually editable instead of duplicating
+    /// editable controls in two places.
+    @Entry var switchToSettingsTab: () -> Void = {}
 }
 
 private struct ReservesFloatingTabBarSpace: ViewModifier {

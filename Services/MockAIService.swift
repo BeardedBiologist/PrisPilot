@@ -94,6 +94,15 @@ class MockAIService: AIService, OnboardingAIService {
         if (input.contains("add") || input.contains("put")) && (input.contains("list") || input.contains("shop")) {
             return addToListResponse(input: input)
         }
+        if input.contains("mark") && (input.contains("bought") || input.contains("done")) {
+            return completeItemResponse(input: input)
+        }
+        if input.contains("remove") && input.contains("from") {
+            return removeItemResponse(input: input)
+        }
+        if input.contains("delete") && input.contains("list") {
+            return deleteListResponse(input: input)
+        }
         if input.contains("remember") || input.contains("what do you know") || input.contains("what have you") {
             return memoryQueryResponse(context: context)
         }
@@ -142,13 +151,48 @@ class MockAIService: AIService, OnboardingAIService {
         )
     }
 
+    private func knownProduct(from input: String) -> String {
+        if input.contains("milk") { return "Milk" }
+        if input.contains("bread") { return "Bread" }
+        if input.contains("egg") { return "Eggs" }
+        if input.contains("butter") { return "Butter" }
+        return "Item"
+    }
+
+    private func completeItemResponse(input: String) -> AIResponse {
+        let product = knownProduct(from: input)
+        let action = ProposedAction(
+            type: .completeShoppingListItem,
+            summary: "Mark bought: \(product) on Weekly Shop",
+            payload: .completeShoppingListItem(listName: "Weekly Shop", productName: product, isCompleted: true),
+            riskLevel: .low
+        )
+        return AIResponse(textContent: nil, proposedActions: [action], memoryProposals: [], error: nil)
+    }
+
+    private func removeItemResponse(input: String) -> AIResponse {
+        let product = knownProduct(from: input)
+        let action = ProposedAction(
+            type: .removeShoppingListItem,
+            summary: "Remove \(product) from Weekly Shop",
+            payload: .removeShoppingListItem(listName: "Weekly Shop", productName: product),
+            riskLevel: .medium
+        )
+        return AIResponse(textContent: nil, proposedActions: [action], memoryProposals: [], error: nil)
+    }
+
+    private func deleteListResponse(input: String) -> AIResponse {
+        let action = ProposedAction(
+            type: .deleteShoppingList,
+            summary: "Delete list: Weekly Shop",
+            payload: .deleteShoppingList(listName: "Weekly Shop"),
+            riskLevel: .high
+        )
+        return AIResponse(textContent: nil, proposedActions: [action], memoryProposals: [], error: nil)
+    }
+
     private func addToListResponse(input: String) -> AIResponse {
-        let product: String
-        if input.contains("milk") { product = "Milk" }
-        else if input.contains("bread") { product = "Bread" }
-        else if input.contains("egg") { product = "Eggs" }
-        else if input.contains("butter") { product = "Butter" }
-        else { product = "Item" }
+        let product = knownProduct(from: input)
 
         let action = ProposedAction(
             type: .addShoppingListItem,

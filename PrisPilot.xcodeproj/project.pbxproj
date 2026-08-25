@@ -29,6 +29,8 @@
 		C4CCD18B3037540300157B4E /* ActivityTagView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4CCD18A3037540300157B4E /* ActivityTagView.swift */; };
 		C4CCD18D3037541100157B4E /* ShoppingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4CCD18C3037541100157B4E /* ShoppingView.swift */; };
 		8C431DAC4E0B91AE06ACF959 /* ShoppingOverviewComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6F33978FF4323144CC8E191 /* ShoppingOverviewComponents.swift */; };
+		D30E3B14B0571AEC0A255492 /* ShoppingListDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C78443DD829E9A36C2A01A7B /* ShoppingListDetailView.swift */; };
+		8A302494294082FC58A62EA8 /* InStoreModeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD42CDA3F2E6E5B51AEA2869 /* InStoreModeView.swift */; };
 		C4CCD18F3037541E00157B4E /* PricesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4CCD18E3037541E00157B4E /* PricesView.swift */; };
 		C4CCD1913037542900157B4E /* RecipesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4CCD1903037542900157B4E /* RecipesView.swift */; };
 		C4CCD1933037543700157B4E /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4CCD1923037543700157B4E /* SettingsView.swift */; };
@@ -87,6 +89,8 @@
 		C4CCD18A3037540300157B4E /* ActivityTagView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityTagView.swift; sourceTree = "<group>"; };
 		C4CCD18C3037541100157B4E /* ShoppingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShoppingView.swift; sourceTree = "<group>"; };
 		D6F33978FF4323144CC8E191 /* ShoppingOverviewComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShoppingOverviewComponents.swift; sourceTree = "<group>"; };
+		C78443DD829E9A36C2A01A7B /* ShoppingListDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShoppingListDetailView.swift; sourceTree = "<group>"; };
+		BD42CDA3F2E6E5B51AEA2869 /* InStoreModeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InStoreModeView.swift; sourceTree = "<group>"; };
 		C4CCD18E3037541E00157B4E /* PricesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PricesView.swift; sourceTree = "<group>"; };
 		C4CCD1903037542900157B4E /* RecipesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecipesView.swift; sourceTree = "<group>"; };
 		C4CCD1923037543700157B4E /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
@@ -270,6 +274,8 @@
 			children = (
 				C4CCD18C3037541100157B4E /* ShoppingView.swift */,
 				D6F33978FF4323144CC8E191 /* ShoppingOverviewComponents.swift */,
+				C78443DD829E9A36C2A01A7B /* ShoppingListDetailView.swift */,
+				BD42CDA3F2E6E5B51AEA2869 /* InStoreModeView.swift */,
 				C4CCD1A030375A4500157B4E /* ManualEntrySheets.swift */,
 			);
 			path = Shopping;
@@ -460,6 +466,8 @@
 				C4CCD181303753AD00157B4E /* ChatModels.swift in Sources */,
 				C4CCD18D3037541100157B4E /* ShoppingView.swift in Sources */,
 				8C431DAC4E0B91AE06ACF959 /* ShoppingOverviewComponents.swift in Sources */,
+				D30E3B14B0571AEC0A255492 /* ShoppingListDetailView.swift in Sources */,
+				8A302494294082FC58A62EA8 /* InStoreModeView.swift in Sources */,
 				C473BA1E3038623200C67296 /* AuthStore.swift in Sources */,
 				C4CCD19D3037583D00157B4E /* APIKeys.swift in Sources */,
 				C473BA1C3038622200C67296 /* AuthModels.swift in Sources */,

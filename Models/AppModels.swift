@@ -19,6 +19,33 @@ enum MeasurementUnit: String, Codable, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
+extension MeasurementUnit {
+    /// This unit's quantity expressed in its family's smallest base unit
+    /// (grams for weight, millilitres for volume, a raw count for
+    /// pieces/packs) — lets differently-sized packages be compared fairly.
+    var baseUnitsPerUnit: Double {
+        switch self {
+        case .grams: return 1
+        case .kilograms: return 1_000
+        case .millilitres: return 1
+        case .litres: return 1_000
+        case .pieces, .packs: return 1
+        }
+    }
+
+    /// The unit this family normalizes to for price comparison — kg for
+    /// weight, l for volume; pieces/packs normalize to themselves, since
+    /// "price per single item" is already the natural comparison unit.
+    var normalizedComparisonUnit: MeasurementUnit {
+        switch self {
+        case .grams, .kilograms: return .kilograms
+        case .millilitres, .litres: return .litres
+        case .pieces: return .pieces
+        case .packs: return .packs
+        }
+    }
+}
+
 // MARK: - Currency & Country
 
 struct Currency: Codable, Hashable {
@@ -81,6 +108,37 @@ struct StoreBranch: Codable, Identifiable, Hashable {
     }
 
     var displayName: String { "\(chainName) \(name)" }
+}
+
+extension String {
+    /// Loose word-overlap match for product names — catches the same
+    /// product typed slightly differently across manual entry, chat,
+    /// receipts, and community data (singular/plural, extra brand words,
+    /// word order). Originally lived only inside `RecipesView`'s recipe
+    /// costing; pulled out here so the Prices "Needs Prices" queue can use
+    /// the exact same matching instead of a second, silently-drifting copy.
+    func looselyMatchesProductName(_ other: String) -> Bool {
+        let leftWords = Set(Self.normalizedProductNameWords(self))
+        let rightWords = Set(Self.normalizedProductNameWords(other))
+        guard !leftWords.isEmpty, !rightWords.isEmpty else { return false }
+
+        let leftText = leftWords.sorted().joined(separator: " ")
+        let rightText = rightWords.sorted().joined(separator: " ")
+        if leftText == rightText || leftText.contains(rightText) || rightText.contains(leftText) {
+            return true
+        }
+
+        let overlap = leftWords.intersection(rightWords).count
+        let denominator = max(leftWords.union(rightWords).count, 1)
+        return Double(overlap) / Double(denominator) >= 0.5
+    }
+
+    private static func normalizedProductNameWords(_ text: String) -> [String] {
+        text
+            .lowercased()
+            .components(separatedBy: CharacterSet.alphanumerics.inverted)
+            .filter { $0.count > 1 }
+    }
 }
 
 // MARK: - Products
@@ -162,8 +220,10 @@ struct PriceObservation: Codable, Identifiable {
         self.createdAt = Date()
     }
 
+    /// Prices become stale after 60 days by default (product plan: Prices §
+    /// Confirmed Product Decisions).
     var isStale: Bool {
-        ageInDays > 30
+        ageInDays > 60
     }
 
     var isPromoExpired: Bool {
@@ -175,18 +235,49 @@ struct PriceObservation: Codable, Identifiable {
         Calendar.current.dateComponents([.day], from: observedDate, to: Date()).day ?? 0
     }
 
+    /// Confidence decay bands aligned to the 60-day stale threshold above —
+    /// full confidence through the not-stale window, then two step-downs
+    /// before falling to Unconfirmed, rather than the old 30/60/90 bands
+    /// that no longer lined up with `isStale`'s 60-day line.
     var freshnessAdjustedConfidence: PriceConfidence {
         if isPromoExpired { return .unconfirmed }
         switch ageInDays {
-        case 0...30:
+        case 0...60:
             return confidence
-        case 31...60:
+        case 61...120:
             return confidence.reduced()
-        case 61...90:
+        case 121...180:
             return confidence.reduced().reduced()
         default:
             return .unconfirmed
         }
+    }
+
+    /// This observation's price normalized to its unit family's standard
+    /// comparison unit (kr/kg for weight, kr/l for volume, kr/stk for a
+    /// pieces- or packs-counted product) — `nil` when no package size was
+    /// recorded, since there's nothing to normalize against. Shared home
+    /// for unit-price math so Prices (product detail) and Meals (recipe
+    /// costing) can both use it instead of each re-deriving their own
+    /// gram/millilitre conversion.
+    var normalizedUnitPrice: UnitPrice? {
+        guard let quantity, let unit, quantity > 0 else { return nil }
+        let baseQuantity = quantity * unit.baseUnitsPerUnit
+        guard baseQuantity > 0 else { return nil }
+        let normalizedUnit = unit.normalizedComparisonUnit
+        let ratio = normalizedUnit.baseUnitsPerUnit / baseQuantity
+        return UnitPrice(value: price * Decimal(ratio), unit: normalizedUnit)
+    }
+}
+
+/// A price expressed per a normalized unit (kr/kg, kr/l, kr/stk), so
+/// differently-packaged products can be compared fairly.
+struct UnitPrice: Hashable {
+    var value: Decimal
+    var unit: MeasurementUnit
+
+    func formatted(currencySymbol: String) -> String {
+        "\(currencySymbol) \(NSDecimalNumber(decimal: value).stringValue) / \(unit.rawValue)"
     }
 }
 

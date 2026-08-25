@@ -35,6 +35,7 @@ struct RootTabView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .environment(\.floatingTabBarInset, measuredTabBarHeight)
                 .environment(\.switchToChatTab) { selectTab(.chat) }
+                .environment(\.switchToSettingsTab) { selectTab(.profile) }
 
             customTabBar
                 .onGeometryChange(for: CGFloat.self) { proxy in

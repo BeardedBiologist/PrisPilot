@@ -396,26 +396,7 @@ private struct RecipeCostEstimate {
     }
 
     private static func namesMatch(_ lhs: String, _ rhs: String) -> Bool {
-        let leftWords = Set(normalisedWords(lhs))
-        let rightWords = Set(normalisedWords(rhs))
-        guard !leftWords.isEmpty, !rightWords.isEmpty else { return false }
-
-        let leftText = leftWords.sorted().joined(separator: " ")
-        let rightText = rightWords.sorted().joined(separator: " ")
-        if leftText == rightText || leftText.contains(rightText) || rightText.contains(leftText) {
-            return true
-        }
-
-        let overlap = leftWords.intersection(rightWords).count
-        let denominator = max(leftWords.union(rightWords).count, 1)
-        return Double(overlap) / Double(denominator) >= 0.5
-    }
-
-    private static func normalisedWords(_ text: String) -> [String] {
-        text
-            .lowercased()
-            .components(separatedBy: CharacterSet.alphanumerics.inverted)
-            .filter { $0.count > 1 }
+        lhs.looselyMatchesProductName(rhs)
     }
 }
 

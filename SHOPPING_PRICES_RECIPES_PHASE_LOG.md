@@ -7,6 +7,418 @@ the top. Each entry: what changed, why, how it was verified, what's next.
 
 ---
 
+## 2026-08-25 — Phase 7 (Prices: overview redesign) implemented
+
+`xcodebuild ... build` → **BUILD SUCCEEDED**.
+
+**Closed a gap from Phase 6 first:** the phase plan expected Phase 6 to
+extract the product-name matching helper for reuse here, but Phase 6 only
+extracted the unit-conversion piece. Fixed now instead of re-deriving a
+third copy: pulled `RecipesView.swift`'s private
+`RecipeCostEstimate.namesMatch`/`normalisedWords` out into
+`String.looselyMatchesProductName(_:)` in `Models/AppModels.swift` (word-
+overlap matching — same logic, just shared). `RecipesView.swift`'s
+`namesMatch` is now a one-line wrapper calling the shared version, so
+recipe costing's behavior is provably unchanged.
+
+**`Store/AppStore.swift`:** new `NeedsPriceEntry` struct + `needsPriceEntries()`
+method — unions (a) pending items on active/planned lists with no
+`estimatedPrice`, (b) recipe ingredients with no usable price match (via
+the now-shared `looselyMatchesProductName`), merged by product name so one
+product needed in three places shows once with all three sources listed
+(e.g. "Weekly Shop · Taco Night (recipe)").
+
+**`Features/Prices/PricesView.swift`:**
+- `PriceViewMode` gained `.needsPrices` and `.community`; existing cases'
+  raw values renamed "Product"/"Store" → "Products"/"Stores" to match the
+  product plan's exact wording for the four top-level modes.
+- Body's content switch restructured to branch per-mode first, each with
+  its own empty/search-empty state, instead of the old shared chain that
+  only handled `.byProduct` specially and would have silently mis-rendered
+  the two new modes.
+- **Needs Prices mode:** one row per `NeedsPriceEntry`, each with an "Add
+  Price" button opening `AddPriceObservationSheet(prefilledProductName:)`
+  via a new `productNameForNewPrice` sheet-state (same prefill pattern
+  Phase 3 already used in Shopping's own Needs Price Data section).
+- **Community mode:** community-sourced (`source == .community`)
+  observations grouped by product, reusing `PriceObservationRow` with a
+  new `matchesPersonalPrice: Bool?` param — `true`/`false` when a non-stale
+  personal observation exists for the same product+store (`nil` shows
+  nothing extra), rendered as "Confirms your price" (green) or "Differs
+  from your price" (blue). This is the product plan's "if values match,
+  show that the community confirms the price" requirement.
+- Summary stat row gained two new tiles (only shown when non-zero): "need
+  price" (red) and "community" (purple, counts unique community products).
+
+**Not committed.** Changed: `Models/AppModels.swift`,
+`Features/Recipes/RecipesView.swift`, `Features/Prices/PricesView.swift`,
+`Store/AppStore.swift`.
+
+### What's next
+
+Review checkpoint: Josh to check the Prices tab's four-mode segmented
+control — Needs Prices should list anything missing a price across active/
+planned Shopping lists and recipes, with working Add Price buttons;
+Community mode needs actual `source: .community` observations to populate
+(there's no seeded community data, so this may show its empty state unless
+some exist from earlier testing/chat). Also worth re-confirming Products/
+Stores modes still work exactly as before — this phase restructured the
+body's branching logic around them even though their content views
+(`productSections`/`storeSections`) weren't touched. Once confirmed, Phase
+8 (Prices: product/store detail & trust model — unit-price comparison row,
+Store detail screen, duplicate-product merge tool) is next.
+
+---
+
+## 2026-08-25 — Phase 6 (Prices: data model tweaks) implemented
+
+Shopping's five phases are done; this starts the Prices block. `xcodebuild
+... build` → **BUILD SUCCEEDED**. This phase touches only
+`Models/AppModels.swift` — no new files, no `project.pbxproj` surgery
+needed this time.
+
+**Stale threshold, `PriceObservation.isStale`:** `ageInDays > 30` →
+`> 60`, per the product plan's confirmed decision ("Prices become stale
+after 60 days by default"). Confirmed no UI hardcodes "30 days" anywhere
+(grepped `isStale`/`freshnessAdjustedConfidence`/"30 day" across the whole
+codebase) — every call site (`PricesView`, `PriceComparisonView`,
+`ShoppingListDetailView`, `RecipesView`'s cost estimator, `AppStore`'s
+optimizer/outlier logic) reads the computed property, so they all picked up
+the new threshold automatically with no call-site changes needed.
+
+**Confidence decay, `freshnessAdjustedConfidence`:** old bands were
+0–30/31–60/61–90/91+, which no longer lined up with the new 60-day stale
+line (a "stale" 61-day-old price was already two decay steps in under the
+old bands). Rebanded to 0–60 (full)/61–120 (one step down)/121–180 (two
+steps down)/181+ (Unconfirmed) — same three-step shape, just rescaled
+around the new line.
+
+**New unit-price normalization helper**, the other half of this phase:
+extracted the *idea* behind `RecipesView.swift`'s existing
+`RecipeCostEstimate.baseQuantity`/`unitFamily` (kept those in place,
+untouched — didn't want to risk regressing recipe costing over an unrelated
+Prices phase) into a fresh, more general home:
+- `MeasurementUnit.baseUnitsPerUnit` (grams/ml/count-of-1 per unit) and
+  `.normalizedComparisonUnit` (kg for weight, l for volume, self for
+  pieces/packs) — two small extensions on the existing enum.
+- `PriceObservation.normalizedUnitPrice: UnitPrice?` — `nil` when no
+  package size was recorded, otherwise the price converted to kr/kg, kr/l,
+  or kr/stk.
+- New `UnitPrice` struct (`value: Decimal`, `unit: MeasurementUnit`, plus a
+  `formatted(currencySymbol:)` helper) — intentionally not `Codable`/stored
+  anywhere, it's a derived display value computed on demand.
+
+Not wired into any UI yet — Phase 8 (Prices: product/store detail & trust
+model) is where the plan actually calls for a "unit-price comparison row,"
+and that's what this was built for. Landing the model piece now, on its
+own, so Phase 8 doesn't have to do model work and UI work in the same pass.
+
+**Not committed.** Changed: `Models/AppModels.swift` only.
+
+### What's next
+
+Review checkpoint: Josh to confirm nothing regressed in Prices/Shopping/
+Meals cost displays now that "stale" means 60 days instead of 30 (fewer
+things should show as stale/grayed-out than before). There's no new UI
+surface from this phase specifically to test — the unit-price helper has
+no call site yet. Once confirmed, Phase 7 (Prices: overview redesign —
+Needs Prices and Community as real top-level modes) is next.
+
+---
+
+## 2026-08-25 — Known issue: AI list matching creates duplicates instead of finding the existing list
+
+Josh tested Phase 5 live via Chat: "some things are janky." Concrete repro
+he gave: asked to "add milk to the tacos list" — the assistant created a
+**new** shopping list and added milk to that, instead of finding and using
+the existing one. He said there were "other weird things" too but this was
+the main one, and asked to note it and come back later rather than fix now
+— continuing on to Phase 6.
+
+**Likely mechanism (not yet confirmed by fixing it, just read the code
+this session already touched):** `AppStore.findOrCreateShoppingList(name:)`
+(pre-existing, not new this session — used by `addShoppingListItem` and
+now also `addRecipeToShoppingList` from Phase 5) does an **exact**
+case-insensitive name match:
+```swift
+if let existing = shoppingLists.first(where: { $0.name.lowercased() == name.lowercased() }) { ... }
+```
+If the model's `listName` argument doesn't come back as a byte-for-byte
+match to the real list's name (e.g. real list is "Taco Night" and the model
+says "Tacos", "Taco List", or similar), this silently falls through to
+creating a brand-new list rather than fuzzy-matching or asking for
+clarification. The system prompt does tell the model the exact available
+list names (`context.availableShoppingLists`), so this is at least partly a
+prompting/model-adherence problem, not purely a matching-code problem — but
+the matching code has no safety net for the mismatch either way. Compounding
+it: `ActionProposalView`'s summary text ("Add milk to Tacos") looks
+identical whether it's about to reuse an existing list or silently create a
+new one, so there's no way for the user to catch this at approval time
+before it happens.
+
+This same exact-match brittleness applies to every lookup this session
+added in Phase 5 (`shoppingListIndex(matching:)`,
+`shoppingListItemIndex(in:matchingProduct:)` for update/complete/remove/
+delete) and to product-name matching more broadly — likely the shape of at
+least some of the "other weird things" Josh mentioned without a specific
+repro.
+
+**Not fixed yet — deferred per Josh's instruction.** When this gets picked
+up: consider (a) fuzzy/substring list-name matching similar to
+`RecipesView.swift`'s existing `namesMatch` word-overlap matcher rather
+than exact-match, (b) having the proposed-action summary explicitly say
+"(new list)" when `findOrCreateShoppingList` is about to create rather than
+reuse, and/or (c) tightening the system prompt to more forcefully require
+reusing an exact string from the provided list. Worth getting the other
+"weird things" repro'd concretely too before attempting a fix, rather than
+guessing at all of them from one example.
+
+---
+
+## 2026-08-25 — Phase 5 (Shopping: AI actions expansion) implemented
+
+Josh confirmed Phases 3 and 4 look good on-device. `xcodebuild ... build` →
+**BUILD SUCCEEDED**. Not yet tested via live Chat — that's the check for
+this phase (needs a live Gemini key + actually talking to the assistant,
+not just a simulator screenshot).
+
+**`Models/ProposedAction.swift`:** six new `ProposedActionPayload` cases —
+`updateShoppingList`, `deleteShoppingList`, `updateShoppingListItem`,
+`completeShoppingListItem`, `removeShoppingListItem`,
+`addRecipeToShoppingList`. All six `ProposedActionType` cases already
+existed (with `displayName`/`systemImage`/`isDestructive` already correct)
+— this phase was purely closing the payload/execution gap, as the phase
+plan described.
+
+**`Store/AppStore.swift`:**
+- `execute(_:)` gained all six cases. Two new private lookup helpers:
+  `shoppingListIndex(matching:)` and
+  `shoppingListItemIndex(in:matchingProduct:)` — deliberately *not*
+  auto-creating a list on miss (unlike `findOrCreateShoppingList`, which
+  `addShoppingListItem`/`addRecipeToShoppingList` still use): an update/
+  delete/complete/remove targeting a list that doesn't exist should be a
+  silent no-op, not a surprise new list.
+- `addRecipeToShoppingList` converts each `RecipeIngredient` into a
+  `ShoppingListItem` with `requestedQuantity` formatted as `"<qty> <unit>"`
+  (e.g. "400 g") — reuses `findOrCreateShoppingList` since adding a
+  recipe's ingredients *should* create the target list if it doesn't
+  exist yet (matches `addShoppingListItem`'s existing behavior).
+- Undo: added `.addRecipeToShoppingList` to both `canUndoActivityTag` and
+  the `.addShoppingListItem` case of `undoActivityTag` (identical removal
+  logic — added items get removed by ID from whichever list holds them).
+  **Deliberately did not add undo for the other four** — this app's undo
+  model only ever supported "created records" (delete-by-ID), and
+  update/delete/complete/remove actions don't fit that shape without
+  snapshotting prior state, which nothing else in the codebase does either
+  (e.g. `updateStore`/`deleteStore` aren't undoable today). Kept consistent
+  with the existing pattern rather than inventing a new one for just this
+  phase.
+
+**`Services/GeminiAIService.swift`:** six new `functionDeclarations()`
+entries and matching `parseFunctionCall(_:)` cases, following the file's
+existing `makeFn`/`strProp`/`boolProp` pattern exactly. `plannedDate` is
+passed as a `YYYY-MM-DD` string (Gemini's function-calling schema has no
+native date type) and parsed via a new `Self.dateFormatter` (UTC,
+gregorian) — mirrors how the rest of the file already treats dates as
+plain strings elsewhere (e.g. receipt parsing). Risk levels: `high` for
+`deleteShoppingList`, `medium` for `removeShoppingListItem` (both already
+`isDestructive` per their `ProposedActionType`), `low` for the rest —
+matches the existing `deleteStore`/`updateStore`/`setStoreEnabled`
+gradient in the same file.
+
+**`Services/MockAIService.swift`:** added matching keyword-triggered mock
+responses (`completeItemResponse`, `removeItemResponse`,
+`deleteListResponse`, dispatched on "mark ... bought/done", "remove ...
+from", "delete ... list") so the no-API-key fallback path stays
+representative of the app's actual capabilities, not just the pre-Phase-5
+ones. Refactored the inline product-guessing logic in `addToListResponse`
+into a shared `knownProduct(from:)` helper reused by all three new
+responses rather than copy-pasting the same four-branch if/else three more
+times. Kept the existing convention of hardcoding "Weekly Shop" as the
+target list (every existing mock response already does this — the mock
+service has never done fuzzy list-name matching against
+`context.availableShoppingLists`, so this doesn't introduce a new
+capability tier just for the new actions).
+
+**Not committed.** Changed: `Models/ProposedAction.swift`,
+`Services/GeminiAIService.swift`, `Services/MockAIService.swift`,
+`Store/AppStore.swift`.
+
+### What's next
+
+Review checkpoint: Josh to test via Chat with a live Gemini key — "mark
+milk as bought", "remove bread from the list", "add my taco recipe to
+Weekly Shop", "delete my old test list" — confirming each proposes the
+right action, approval executes correctly, and destructive ones
+(delete list, remove item) still require explicit confirmation. Also worth
+trying the no-API-key Mock path for the same phrasings since that changed
+too. Once confirmed, Shopping's five phases are complete and Phase 6
+(Prices: data model tweaks — 60-day stale threshold, unit-price
+normalization helper) starts the Prices block.
+
+---
+
+## 2026-08-25 — Phase 4 (Shopping: in-store mode) implemented
+
+`xcodebuild ... build` → **BUILD SUCCEEDED**. Not yet on-device tested —
+per Josh's note this turn, we're now reviewing after every phase before
+continuing, so this is the next thing for him to check.
+
+**New file `Features/Shopping/InStoreModeView.swift`** (registered in
+`project.pbxproj` the same manual way as every new file this project needs —
+`PBXFileReference` + `PBXBuildFile` + Sources-phase entry + group child,
+all four, checked this time against a mistake caught mid-edit: earlier in
+this file's own creation, `\.actualPrice ?? $0.estimatedPrice` was
+originally written as an invalid keypath/closure mix
+(`compactMap(\.actualPrice ?? $0.estimatedPrice)`) — SourceKit's live
+diagnostics flagged it immediately as "anonymous closure argument not
+contained in a closure" and it was fixed before the build was even run,
+to a proper closure: `compactMap { $0.actualPrice ?? $0.estimatedPrice }`).
+
+Full-screen (`fullScreenCover`), one-store-at-a-time mode: large
+checkboxes (32pt vs. the normal row's ~24pt), a running subtotal/spent
+band, a segmented store-switcher when the trip has more than one store,
+and a blue-highlighted "next item" focus row (first uncompleted item).
+Completing every item at the current store shows a "This store is done!"
+banner with a "Continue to `<next store>`" button when another store still
+has pending items, plus a light success haptic
+(`UINotificationFeedbackGenerator`, gated only on the
+`pendingItems.count` transition to zero — not wrapped in a Reduce Motion
+check since haptics aren't a Reduce-Motion-governed effect). Reuses the
+exact same `toggle`/`captureActualPrice` logic and `PriceCaptureSheet` as
+the main detail view rather than duplicating completion semantics —
+in-store mode is a different *presentation* of the same list state, not a
+separate data path.
+
+**Entry point:** `Features/Shopping/ShoppingListDetailView.swift` gained a
+toolbar "checklist" icon button (only shown when at least one priced,
+assigned, pending item exists — `firstStoreWithPendingItems`), opening
+`InStoreModeView` as a `fullScreenCover` seeded with that first store.
+
+**Not committed.** Changed: `Features/Shopping/InStoreModeView.swift`
+(new), `Features/Shopping/ShoppingListDetailView.swift`,
+`PrisPilot.xcodeproj/project.pbxproj`.
+
+### What's next
+
+**Review checkpoint per Josh's instruction this turn:** stopping here for
+him to test Phases 3 and 4 on his phone (Phase 2 is already confirmed
+working). Once he confirms nothing's broken, next up is Phase 5 (Shopping:
+AI actions expansion) — closing the gap between what `ProposedActionType`
+already lists and what `AppStore.execute(_:)` implements for shopping
+lists, plus wiring the new function declarations into
+`Services/GeminiAIService.swift`'s `functionDeclarations()`/
+`parseFunctionCall(_:)` (already read and scoped this file this turn, no
+code written yet). Continuing to build without a manual test gate between
+*every single* phase was the earlier assumption from "keep going through
+all phases" — corrected now to: build + log each phase, but pause for
+Josh's on-device check before starting the next one.
+
+---
+
+## 2026-08-25 — Phase 3 (Shopping: list detail redesign) implemented
+
+Josh tested Phase 2 on-device ("starting to look smart") and asked to keep
+going through all remaining phases before circling back to refine — the
+tabs feed into each other, so the plan continues phase-by-phase without a
+manual test gate after each one for now.
+
+All of the phase plan's Phase 3 tasks done, plus one from Phase 1's
+groundwork put to use for the first time (`selectedPriceObservationID`).
+`xcodebuild ... build` → **BUILD SUCCEEDED**.
+
+**Split `ShoppingListDetailView`, `ShoppingItemRow`, and `PriceCaptureSheet`
+out of `ShoppingView.swift`** into a new
+`Features/Shopping/ShoppingListDetailView.swift` (per the phase plan's own
+suggestion — the file was already 700+ lines before this redesign).
+`ShoppingView.swift` is back down to just the overview + `ShoppingListCard`
+(333 lines). Same manual `project.pbxproj` wiring as Phase 2's new file
+(new `PBXFileReference`/`PBXBuildFile`/Sources-phase entries, generated IDs
+checked for collisions) — now a confirmed pattern for every future new file
+under `Features/`.
+
+**`Store/AppStore.swift`** — new methods: `moveItem(_:in:toBranchID:)`
+(manual store reassignment, reuses the existing private `bestObservation`
+lookup), `assignPriceObservation(_:toItem:in:)` (assign a *specific* known
+observation — used by the community-price CTA), `addSubstituteCandidate`/
+`useSubstitute` (substitute tracking — swapping keeps the old name as a
+candidate so it's reversible, and clears price/store since the substitute
+needs its own pricing), `undoCompleteItem` (explicit undo, distinct from
+just re-tapping the row). `optimizeShoppingList(_:)` gained a
+`maxStoresOverride: Int?` param for the new "force one store" toggle,
+without touching the actual `maxSupermarketCount` setting.
+
+**`DesignSystem/GlassTheme.swift` / `App/RootTabView.swift`:** added a
+`switchToSettingsTab` environment hook, same shape as Phase 2's
+`switchToChatTab` — used by the new optimization-controls readout row
+("Up to N stores · saves ≥ kr X to add one") so it can link out to Settings
+instead of duplicating editable controls in the detail view.
+
+**New `ShoppingListDetailView` body,** section by section:
+- **Trip summary band:** kept the existing optimization banner + running
+  total, added a stat-pair row (store count, priced/unpriced count) sourced
+  from either the live `optimizationResult` or a new `fallbackResult(from:)`
+  that synthesizes the same shape from the list's persisted
+  `optimizationSnapshot` (Phase 1) — so the stat pair doesn't flicker blank
+  while the optimizer's `Task` is still in flight, and still shows
+  something for a list that was optimized in a previous session.
+- **Optimization controls:** new "Force one store" toggle (re-runs
+  optimization on change via `maxStoresOverride: 1`) plus the settings
+  readout row above.
+- **Store sections:** header now shows item count + subtotal, and a small
+  orange warning icon when any item in that store's group has a
+  freshness-adjusted confidence of Low/Unconfirmed — the first real use of
+  Phase 1's `selectedPriceObservationID` field, looked up against
+  `store.priceObservations` to get the actual confidence rather than
+  guessing from the item alone. Also added `.textCase(nil)` on these
+  headers, which the old code didn't have — the default List section-header
+  uppercase transform was rendering store names like "Kiwi Majorstuen" as
+  "KIWI MAJORSTUEN"; fixed as a drive-by since the new header content made
+  it obvious.
+- **Needs Price Data section:** replaces the old implicit "Unassigned"
+  store-group bucket entirely. Each row: Add Price (opens
+  `AddPriceObservationSheet(prefilledProductName:)`, already supported that
+  parameter — re-runs the optimizer on dismiss so the new price gets
+  picked up automatically), Use Community Price (only shown when a
+  non-expired community observation exists for that product; assigns the
+  cheapest match directly via `assignPriceObservation`), and a barcode-scan
+  icon. **Scoped down from the plan's literal text:** the barcode button
+  opens the same general `.addToList` scanner as the toolbar's existing
+  barcode button (adds a new item by barcode) rather than fixing *this*
+  item's price specifically — `BarcodeScannerView`'s `.priceEntry` mode has
+  no product-name-prefill path today, and building one felt like scope
+  creep for a phase that's already touching a lot of surface. Noted here
+  rather than quietly shipping a half-connected button.
+- **Completed section:** now a collapsible `DisclosureGroup` (default
+  collapsed) instead of a flat section, each row swipeable for an explicit
+  Undo (`undoCompleteItem` — clears `actualPrice` too, distinct from
+  tap-to-toggle which is still there and still just flips `isCompleted`).
+- **Item rows** (in store sections): trailing swipe → Move (opens
+  `MoveItemToStoreSheet`, a plain store-picker driving `moveItem`), leading
+  swipe → Substitute (opens `SubstituteItemSheet` — list existing
+  candidates with a one-tap "Use", plus a text field to add a new
+  candidate idea via `addSubstituteCandidate`).
+
+**Verification:** compile-only (`xcodebuild build` → BUILD SUCCEEDED). Per
+Josh's message this turn, **not tested on-device this phase** — he's
+testing on his phone directly rather than having the agent drive a
+simulator, so the plan is to keep landing phases and let him batch-test
+once more of the surface exists.
+
+**Not committed.** Changed: `App/RootTabView.swift`,
+`DesignSystem/GlassTheme.swift`, `Features/Shopping/ShoppingView.swift`
+(trimmed), `Features/Shopping/ShoppingListDetailView.swift` (new),
+`PrisPilot.xcodeproj/project.pbxproj`, `Store/AppStore.swift`.
+
+### What's next
+
+Phase 4 (Shopping: in-store mode) is next, explicitly marked optional/
+stretch in the phase plan — large checkboxes, one store at a time, fast
+actual-price entry. Continuing straight through per Josh's instruction to
+land all phases before refinement testing.
+
+---
+
 ## 2026-08-25 — Phase 2 (Shopping: overview screen redesign) implemented
 
 All of the phase plan's Phase 2 tasks done. `xcodebuild -project

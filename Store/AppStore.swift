@@ -147,7 +147,8 @@ class AppStore {
         guard !tag.affectedRecordIDs.isEmpty else { return false }
         switch tag.actionType {
         case .createPriceObservation, .addShoppingListItem, .createShoppingList,
-             .createStore, .createMemory, .createProduct, .createRecipe:
+             .createStore, .createMemory, .createProduct, .createRecipe,
+             .addRecipeToShoppingList:
             return true
         default:
             return false
@@ -167,7 +168,7 @@ class AppStore {
             communityContributions.removeAll { ids.contains($0.sourceObservationID) }
             didUndo = priceObservations.count != before
 
-        case .addShoppingListItem:
+        case .addShoppingListItem, .addRecipeToShoppingList:
             for listIndex in shoppingLists.indices {
                 let before = shoppingLists[listIndex].items.count
                 shoppingLists[listIndex].items.removeAll { ids.contains($0.id) }
@@ -597,6 +598,63 @@ class AppStore {
             shoppingLists.append(list)
             return [list.id]
 
+        case .updateShoppingList(let existingListName, let newName, let plannedDate):
+            guard let idx = shoppingListIndex(matching: existingListName) else { return [] }
+            if let newName, !newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                shoppingLists[idx].name = newName
+            }
+            if let plannedDate {
+                shoppingLists[idx].plannedDate = plannedDate
+            }
+            return [shoppingLists[idx].id]
+
+        case .deleteShoppingList(let listName):
+            guard let idx = shoppingListIndex(matching: listName) else { return [] }
+            let id = shoppingLists[idx].id
+            shoppingLists.remove(at: idx)
+            return [id]
+
+        case .updateShoppingListItem(let listName, let productName, let newQuantity, let newNotes):
+            guard let listIdx = shoppingListIndex(matching: listName),
+                  let itemIdx = shoppingListItemIndex(in: listIdx, matchingProduct: productName) else { return [] }
+            if let newQuantity, !newQuantity.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                shoppingLists[listIdx].items[itemIdx].requestedQuantity = newQuantity
+            }
+            if let newNotes {
+                shoppingLists[listIdx].items[itemIdx].notes = newNotes
+            }
+            return [shoppingLists[listIdx].items[itemIdx].id]
+
+        case .completeShoppingListItem(let listName, let productName, let isCompleted):
+            guard let listIdx = shoppingListIndex(matching: listName),
+                  let itemIdx = shoppingListItemIndex(in: listIdx, matchingProduct: productName) else { return [] }
+            shoppingLists[listIdx].items[itemIdx].isCompleted = isCompleted
+            return [shoppingLists[listIdx].items[itemIdx].id]
+
+        case .removeShoppingListItem(let listName, let productName):
+            guard let listIdx = shoppingListIndex(matching: listName),
+                  let itemIdx = shoppingListItemIndex(in: listIdx, matchingProduct: productName) else { return [] }
+            let id = shoppingLists[listIdx].items[itemIdx].id
+            shoppingLists[listIdx].items.remove(at: itemIdx)
+            return [id]
+
+        case .addRecipeToShoppingList(let recipeName, let listName):
+            let trimmedRecipeName = recipeName.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard let recipe = recipes.first(where: { $0.title.lowercased() == trimmedRecipeName.lowercased() }) else { return [] }
+            let list = findOrCreateShoppingList(name: listName)
+            guard let listIdx = shoppingLists.firstIndex(where: { $0.id == list.id }) else { return [] }
+            var addedIDs: [UUID] = []
+            for ingredient in recipe.ingredients {
+                let item = ShoppingListItem(
+                    listID: list.id,
+                    productName: ingredient.productName,
+                    requestedQuantity: "\(ingredient.quantity.formatted()) \(ingredient.unit.rawValue)"
+                )
+                shoppingLists[listIdx].items.append(item)
+                addedIDs.append(item.id)
+            }
+            return addedIDs
+
         case .createStore(let chainName, let branchName, let address, let isEnabled):
             let branch = createStoreBranch(chainName: chainName, branchName: branchName, address: address, isEnabled: isEnabled)
             return [branch.id]
@@ -758,6 +816,45 @@ class AppStore {
         persistNow()
     }
 
+    // MARK: - Needs Prices
+
+    /// A row in the Prices tab's "Needs Prices" queue — one product name
+    /// missing a usable price, with every place that's asking for it.
+    struct NeedsPriceEntry: Identifiable {
+        var id: String { productName.lowercased() }
+        var productName: String
+        var sources: [String]
+    }
+
+    /// Union of (a) pending items on active/planned shopping lists with no
+    /// `estimatedPrice`, and (b) recipe ingredients with no usable price
+    /// match — merged by product name so a product needed in three places
+    /// shows once, with all three sources listed.
+    func needsPriceEntries() -> [NeedsPriceEntry] {
+        var bySource: [String: (productName: String, sources: Set<String>)] = [:]
+
+        for list in activeLists + plannedLists {
+            for item in list.items where !item.isCompleted && item.estimatedPrice == nil {
+                let key = item.productName.lowercased()
+                bySource[key, default: (item.productName, [])].sources.insert(list.name)
+            }
+        }
+
+        let usableObservations = priceObservations.filter { !$0.isStale && !$0.isPromoExpired }
+        for recipe in recipes {
+            for ingredient in recipe.ingredients {
+                let hasMatch = usableObservations.contains { $0.productName.looselyMatchesProductName(ingredient.productName) }
+                guard !hasMatch else { continue }
+                let key = ingredient.productName.lowercased()
+                bySource[key, default: (ingredient.productName, [])].sources.insert("\(recipe.title) (recipe)")
+            }
+        }
+
+        return bySource.values
+            .map { NeedsPriceEntry(productName: $0.productName, sources: $0.sources.sorted()) }
+            .sorted { $0.productName < $1.productName }
+    }
+
     // MARK: - Community Pricing
 
     func queueCommunityContributionIfNeeded(for observation: PriceObservation) {
@@ -869,7 +966,7 @@ class AppStore {
     /// Runs the trip-plan optimizer for a shopping list and writes store assignments +
     /// estimated prices back to each pending item. Returns a summary of the result.
     @discardableResult
-    func optimizeShoppingList(_ listID: UUID) -> OptimizationResult? {
+    func optimizeShoppingList(_ listID: UUID, maxStoresOverride: Int? = nil) -> OptimizationResult? {
         guard let idx = shoppingLists.firstIndex(where: { $0.id == listID }) else { return nil }
         let pendingItems = shoppingLists[idx].items.filter { !$0.isCompleted }
         guard !pendingItems.isEmpty, !enabledBranches.isEmpty else { return nil }
@@ -933,8 +1030,9 @@ class AppStore {
             }
             .sorted { $0.savings > $1.savings }
 
+        let maxStores = maxStoresOverride ?? settings.maxSupermarketCount
         for candidate in candidates {
-            guard selectedBranches.count < settings.maxSupermarketCount else { break }
+            guard selectedBranches.count < maxStores else { break }
             if candidate.savings >= settings.minimumAdditionalStoreSavings {
                 selectedBranches.append(candidate.branch)
                 assignments = candidate.newAssignments
@@ -992,6 +1090,94 @@ class AppStore {
             assignedCount: assignments.count,
             unassignedCount: unassigned
         )
+    }
+
+    // MARK: - Manual Shopping List Item Reassignment
+
+    /// Manually reassigns a pending item to a specific store, overriding
+    /// whatever the optimizer chose — looks up the best known price at that
+    /// store the same way the optimizer does; if none exists, the item is
+    /// still moved to the store, just with no price.
+    func moveItem(_ itemID: UUID, in listID: UUID, toBranchID branchID: UUID) {
+        guard let listIdx = shoppingLists.firstIndex(where: { $0.id == listID }),
+              let itemIdx = shoppingLists[listIdx].items.firstIndex(where: { $0.id == itemID }),
+              let branch = branches.first(where: { $0.id == branchID }) else { return }
+
+        let productName = shoppingLists[listIdx].items[itemIdx].productName
+        if let obs = bestObservation(productName: productName, branchID: branchID) {
+            shoppingLists[listIdx].items[itemIdx].estimatedPrice = obs.price
+            shoppingLists[listIdx].items[itemIdx].selectedPriceObservationID = obs.id
+        } else {
+            shoppingLists[listIdx].items[itemIdx].estimatedPrice = nil
+            shoppingLists[listIdx].items[itemIdx].selectedPriceObservationID = nil
+        }
+        shoppingLists[listIdx].items[itemIdx].assignedStoreBranch = branch.displayName
+        persistNow()
+    }
+
+    /// Assigns an item's price directly from a known `PriceObservation` —
+    /// used by the "use this community price" action, where the exact
+    /// observation is already known rather than "best at this store".
+    func assignPriceObservation(_ observationID: UUID, toItem itemID: UUID, in listID: UUID) {
+        guard let listIdx = shoppingLists.firstIndex(where: { $0.id == listID }),
+              let itemIdx = shoppingLists[listIdx].items.firstIndex(where: { $0.id == itemID }),
+              let obs = priceObservations.first(where: { $0.id == observationID }) else { return }
+
+        shoppingLists[listIdx].items[itemIdx].assignedStoreBranch = obs.storeBranchName
+        shoppingLists[listIdx].items[itemIdx].estimatedPrice = obs.price
+        shoppingLists[listIdx].items[itemIdx].selectedPriceObservationID = obs.id
+        persistNow()
+    }
+
+    /// Records a substitute idea for an item without swapping to it yet.
+    func addSubstituteCandidate(_ itemID: UUID, in listID: UUID, name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty,
+              let listIdx = shoppingLists.firstIndex(where: { $0.id == listID }),
+              let itemIdx = shoppingLists[listIdx].items.firstIndex(where: { $0.id == itemID }) else { return }
+
+        var candidates = shoppingLists[listIdx].items[itemIdx].substituteCandidateNames ?? []
+        guard !candidates.contains(where: { $0.caseInsensitiveCompare(trimmed) == .orderedSame }) else { return }
+        candidates.append(trimmed)
+        shoppingLists[listIdx].items[itemIdx].substituteCandidateNames = candidates
+        persistNow()
+    }
+
+    /// Swaps an item's product for one of its recorded substitute
+    /// candidates (or any typed replacement). The old name is kept as a
+    /// candidate so the swap is reversible. Clears price/store assignment —
+    /// the substitute needs its own pricing.
+    func useSubstitute(_ itemID: UUID, in listID: UUID, newProductName: String) {
+        let trimmed = newProductName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty,
+              let listIdx = shoppingLists.firstIndex(where: { $0.id == listID }),
+              let itemIdx = shoppingLists[listIdx].items.firstIndex(where: { $0.id == itemID }) else { return }
+
+        let oldName = shoppingLists[listIdx].items[itemIdx].productName
+        var candidates = shoppingLists[listIdx].items[itemIdx].substituteCandidateNames ?? []
+        candidates.removeAll { $0.caseInsensitiveCompare(trimmed) == .orderedSame }
+        if !oldName.isEmpty && !candidates.contains(where: { $0.caseInsensitiveCompare(oldName) == .orderedSame }) {
+            candidates.append(oldName)
+        }
+
+        shoppingLists[listIdx].items[itemIdx].productName = trimmed
+        shoppingLists[listIdx].items[itemIdx].productID = nil
+        shoppingLists[listIdx].items[itemIdx].substituteCandidateNames = candidates
+        shoppingLists[listIdx].items[itemIdx].estimatedPrice = nil
+        shoppingLists[listIdx].items[itemIdx].selectedPriceObservationID = nil
+        shoppingLists[listIdx].items[itemIdx].assignedStoreBranch = nil
+        persistNow()
+    }
+
+    /// Reverses `toggle`'s completion path: un-completes an item and clears
+    /// the actual price captured for it, for the completed section's
+    /// explicit Undo action.
+    func undoCompleteItem(_ itemID: UUID, in listID: UUID) {
+        guard let listIdx = shoppingLists.firstIndex(where: { $0.id == listID }),
+              let itemIdx = shoppingLists[listIdx].items.firstIndex(where: { $0.id == itemID }) else { return }
+        shoppingLists[listIdx].items[itemIdx].isCompleted = false
+        shoppingLists[listIdx].items[itemIdx].actualPrice = nil
+        persistNow()
     }
 
     private func bestObservation(productName: String, branchID: UUID) -> PriceObservation? {
@@ -1100,6 +1286,20 @@ class AppStore {
         let list = ShoppingList(name: name)
         shoppingLists.append(list)
         return list
+    }
+
+    /// Case-insensitive exact-name lookup for AI actions that must target an
+    /// *existing* list (update/delete/item edits) — unlike
+    /// `findOrCreateShoppingList`, this never creates one, since "update a
+    /// list that doesn't exist" should just be a no-op, not a surprise create.
+    private func shoppingListIndex(matching name: String) -> Int? {
+        let target = name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return shoppingLists.firstIndex { $0.name.lowercased() == target }
+    }
+
+    private func shoppingListItemIndex(in listIdx: Int, matchingProduct productName: String) -> Int? {
+        let target = productName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return shoppingLists[listIdx].items.firstIndex { $0.productName.lowercased() == target }
     }
 
     // MARK: - Seed Data

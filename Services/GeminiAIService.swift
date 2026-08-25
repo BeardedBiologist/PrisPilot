@@ -351,6 +351,61 @@ final class GeminiAIService: AIService, OnboardingAIService, ReceiptParsingAISer
                 required: ["name"]
             ),
             makeFn(
+                name: "updateShoppingList",
+                desc: "Rename an existing shopping list, or set/change its planned shopping date.",
+                props: [
+                    "existingListName": strProp("Existing list name to update"),
+                    "newName":          strProp("New name for the list, if renaming"),
+                    "plannedDate":      strProp("New planned date in YYYY-MM-DD format, if setting/changing it")
+                ],
+                required: ["existingListName"]
+            ),
+            makeFn(
+                name: "deleteShoppingList",
+                desc: "Delete an entire shopping list. Only use when the user clearly asks to delete or remove a list.",
+                props: ["listName": strProp("List name to delete")],
+                required: ["listName"]
+            ),
+            makeFn(
+                name: "updateShoppingListItem",
+                desc: "Change the quantity or notes for an item already on a shopping list.",
+                props: [
+                    "listName":    strProp("Shopping list name"),
+                    "productName": strProp("Existing item's product name"),
+                    "newQuantity": strProp("New quantity as natural text, e.g. '2', '400 g'"),
+                    "newNotes":    strProp("New notes")
+                ],
+                required: ["listName", "productName"]
+            ),
+            makeFn(
+                name: "completeShoppingListItem",
+                desc: "Mark a shopping list item as bought, or mark a previously-bought item as not bought again.",
+                props: [
+                    "listName":    strProp("Shopping list name"),
+                    "productName": strProp("Item's product name"),
+                    "isCompleted": boolProp("True to mark bought, false to mark not bought. Defaults to true.")
+                ],
+                required: ["listName", "productName"]
+            ),
+            makeFn(
+                name: "removeShoppingListItem",
+                desc: "Remove an item from a shopping list entirely, not just mark it bought.",
+                props: [
+                    "listName":    strProp("Shopping list name"),
+                    "productName": strProp("Item's product name to remove")
+                ],
+                required: ["listName", "productName"]
+            ),
+            makeFn(
+                name: "addRecipeToShoppingList",
+                desc: "Add all ingredients from a saved recipe to a shopping list.",
+                props: [
+                    "recipeName": strProp("Existing saved recipe's title"),
+                    "listName":   strProp("Shopping list name to add ingredients to. Default 'Weekly Shop' if unspecified.")
+                ],
+                required: ["recipeName", "listName"]
+            ),
+            makeFn(
                 name: "createMemory",
                 desc: "Save a user preference, habit, restriction, or decision pattern. Only propose if the user explicitly states a preference.",
                 props: [
@@ -519,6 +574,74 @@ final class GeminiAIService: AIService, OnboardingAIService, ReceiptParsingAISer
                 riskLevel: .low
             ))
 
+        case "updateShoppingList":
+            guard let existingListName = args["existingListName"]?.stringValue else { return .none }
+            let newName = args["newName"]?.stringValue
+            let plannedDate = args["plannedDate"]?.stringValue.flatMap { Self.dateFormatter.date(from: $0) }
+            var summary = "Update list: \(existingListName)"
+            if let newName { summary = "Rename list \(existingListName) to \(newName)" }
+            return .action(ProposedAction(
+                type: .updateShoppingList,
+                summary: summary,
+                payload: .updateShoppingList(existingListName: existingListName, newName: newName, plannedDate: plannedDate),
+                riskLevel: .low
+            ))
+
+        case "deleteShoppingList":
+            guard let listName = args["listName"]?.stringValue else { return .none }
+            return .action(ProposedAction(
+                type: .deleteShoppingList,
+                summary: "Delete list: \(listName)",
+                payload: .deleteShoppingList(listName: listName),
+                riskLevel: .high
+            ))
+
+        case "updateShoppingListItem":
+            guard let list = args["listName"]?.stringValue,
+                  let product = args["productName"]?.stringValue else { return .none }
+            return .action(ProposedAction(
+                type: .updateShoppingListItem,
+                summary: "Update \(product) on \(list)",
+                payload: .updateShoppingListItem(
+                    listName: list,
+                    productName: product,
+                    newQuantity: args["newQuantity"]?.stringValue,
+                    newNotes: args["newNotes"]?.stringValue
+                ),
+                riskLevel: .low
+            ))
+
+        case "completeShoppingListItem":
+            guard let list = args["listName"]?.stringValue,
+                  let product = args["productName"]?.stringValue else { return .none }
+            let isCompleted = args["isCompleted"]?.boolValue ?? true
+            return .action(ProposedAction(
+                type: .completeShoppingListItem,
+                summary: "\(isCompleted ? "Mark bought" : "Mark not bought"): \(product) on \(list)",
+                payload: .completeShoppingListItem(listName: list, productName: product, isCompleted: isCompleted),
+                riskLevel: .low
+            ))
+
+        case "removeShoppingListItem":
+            guard let list = args["listName"]?.stringValue,
+                  let product = args["productName"]?.stringValue else { return .none }
+            return .action(ProposedAction(
+                type: .removeShoppingListItem,
+                summary: "Remove \(product) from \(list)",
+                payload: .removeShoppingListItem(listName: list, productName: product),
+                riskLevel: .medium
+            ))
+
+        case "addRecipeToShoppingList":
+            guard let recipeName = args["recipeName"]?.stringValue,
+                  let listName = args["listName"]?.stringValue else { return .none }
+            return .action(ProposedAction(
+                type: .addRecipeToShoppingList,
+                summary: "Add \(recipeName) ingredients to \(listName)",
+                payload: .addRecipeToShoppingList(recipeName: recipeName, listName: listName),
+                riskLevel: .low
+            ))
+
         case "createMemory":
             guard let summary  = args["summary"]?.stringValue,
                   let catStr   = args["category"]?.stringValue else { return .none }
@@ -594,6 +717,14 @@ final class GeminiAIService: AIService, OnboardingAIService, ReceiptParsingAISer
         let n = NSDecimalNumber(decimal: d)
         return n.stringValue
     }
+
+    private static let dateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.timeZone = TimeZone(identifier: "UTC")
+        return formatter
+    }()
 }
 
 private extension KeyedDecodingContainer {

@@ -9,8 +9,10 @@ private struct IdentifiableString: Identifiable {
 // MARK: - View Mode
 
 private enum PriceViewMode: String, CaseIterable {
-    case byProduct = "Product"
-    case byStore = "Store"
+    case byProduct = "Products"
+    case byStore = "Stores"
+    case needsPrices = "Needs Prices"
+    case community = "Community"
 }
 
 // MARK: - Prices View
@@ -23,11 +25,39 @@ struct PricesView: View {
     @State private var searchText = ""
     @State private var viewMode: PriceViewMode = .byProduct
     @State private var selectedProductName: IdentifiableString? = nil
+    @State private var productNameForNewPrice: IdentifiableString? = nil
 
     private var filtered: [PriceObservation] {
         let q = searchText.trimmingCharacters(in: .whitespaces).lowercased()
         guard !q.isEmpty else { return store.priceObservations }
         return store.priceObservations.filter {
+            $0.productName.lowercased().contains(q) ||
+            $0.storeBranchName.lowercased().contains(q)
+        }
+    }
+
+    // MARK: Needs Prices
+
+    private var allNeedsPriceEntries: [AppStore.NeedsPriceEntry] {
+        store.needsPriceEntries()
+    }
+
+    private var filteredNeedsPriceEntries: [AppStore.NeedsPriceEntry] {
+        let q = searchText.trimmingCharacters(in: .whitespaces).lowercased()
+        guard !q.isEmpty else { return allNeedsPriceEntries }
+        return allNeedsPriceEntries.filter { $0.productName.lowercased().contains(q) }
+    }
+
+    // MARK: Community
+
+    private var allCommunityObservations: [PriceObservation] {
+        store.priceObservations.filter { $0.source == .community }
+    }
+
+    private var filteredCommunityObservations: [PriceObservation] {
+        let q = searchText.trimmingCharacters(in: .whitespaces).lowercased()
+        guard !q.isEmpty else { return allCommunityObservations }
+        return allCommunityObservations.filter {
             $0.productName.lowercased().contains(q) ||
             $0.storeBranchName.lowercased().contains(q)
         }
@@ -59,18 +89,46 @@ struct PricesView: View {
                         systemImage: "tag",
                         description: Text("Tell me in Chat what you paid for items and I'll record prices automatically.")
                     )
-                } else if store.priceObservations.isEmpty && viewMode == .byProduct {
-                    ContentUnavailableView(
-                        "No Prices Recorded",
-                        systemImage: "tag",
-                        description: Text("You have \(store.enabledBranches.count) store\(store.enabledBranches.count == 1 ? "" : "s") set up. Tap + to add your first price, or tell me in Chat.")
-                    )
-                } else if filtered.isEmpty && viewMode == .byProduct {
-                    ContentUnavailableView.search(text: searchText)
                 } else {
                     switch viewMode {
-                    case .byProduct: productSections
-                    case .byStore: storeSections
+                    case .byProduct:
+                        if store.priceObservations.isEmpty {
+                            ContentUnavailableView(
+                                "No Prices Recorded",
+                                systemImage: "tag",
+                                description: Text("You have \(store.enabledBranches.count) store\(store.enabledBranches.count == 1 ? "" : "s") set up. Tap + to add your first price, or tell me in Chat.")
+                            )
+                        } else if filtered.isEmpty {
+                            ContentUnavailableView.search(text: searchText)
+                        } else {
+                            productSections
+                        }
+                    case .byStore:
+                        storeSections
+                    case .needsPrices:
+                        if allNeedsPriceEntries.isEmpty {
+                            ContentUnavailableView(
+                                "Nothing Needs Prices",
+                                systemImage: "checkmark.circle",
+                                description: Text("Every item on your active lists and every recipe ingredient has a recent price.")
+                            )
+                        } else if filteredNeedsPriceEntries.isEmpty {
+                            ContentUnavailableView.search(text: searchText)
+                        } else {
+                            needsPriceSection
+                        }
+                    case .community:
+                        if allCommunityObservations.isEmpty {
+                            ContentUnavailableView(
+                                "No Community Prices Yet",
+                                systemImage: "person.3",
+                                description: Text("Community-sourced prices will show up here once they're available for your area.")
+                            )
+                        } else if filteredCommunityObservations.isEmpty {
+                            ContentUnavailableView.search(text: searchText)
+                        } else {
+                            communitySections
+                        }
                     }
                 }
             }
@@ -104,6 +162,10 @@ struct PricesView: View {
             }
             .sheet(item: $selectedProductName) { item in
                 ProductPriceHistoryView(productName: item.value)
+                    .environment(store)
+            }
+            .sheet(item: $productNameForNewPrice) { item in
+                AddPriceObservationSheet(prefilledProductName: item.value)
                     .environment(store)
             }
         }
@@ -186,6 +248,58 @@ struct PricesView: View {
         }
     }
 
+    @ViewBuilder
+    private var needsPriceSection: some View {
+        Section {
+            ForEach(filteredNeedsPriceEntries) { entry in
+                NeedsPriceRow(entry: entry) {
+                    productNameForNewPrice = IdentifiableString(entry.productName)
+                }
+            }
+        } header: {
+            Text("\(filteredNeedsPriceEntries.count) product\(filteredNeedsPriceEntries.count == 1 ? "" : "s") need\(filteredNeedsPriceEntries.count == 1 ? "s" : "") a price")
+        }
+    }
+
+    @ViewBuilder
+    private var communitySections: some View {
+        let grouped = Dictionary(grouping: filteredCommunityObservations, by: { $0.productName })
+        ForEach(grouped.keys.sorted(), id: \.self) { productName in
+            Section(productName) {
+                ForEach((grouped[productName] ?? []).sorted { $0.observedDate > $1.observedDate }) { obs in
+                    PriceObservationRow(
+                        observation: obs,
+                        communityConfidence: store.communityConfidence(for: obs),
+                        isCommunityOutlier: store.isOutlier(obs),
+                        matchesPersonalPrice: personalPriceMatch(for: obs)
+                    )
+                    .contentShape(Rectangle())
+                    .onTapGesture { selectedProductName = IdentifiableString(productName) }
+                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                        Button { store.flagCommunityPriceObservation(obs.id) } label: {
+                            Label("Flag", systemImage: "flag")
+                        }
+                        .tint(.orange)
+                    }
+                }
+            }
+        }
+    }
+
+    /// `true`/`false` when a non-stale personal observation exists for the
+    /// same product at the same store (matches or differs in price);
+    /// `nil` when there's nothing personal to compare against.
+    private func personalPriceMatch(for observation: PriceObservation) -> Bool? {
+        guard let personal = store.priceObservations.first(where: {
+            $0.source != .community &&
+            $0.productID == observation.productID &&
+            $0.storeBranchID == observation.storeBranchID &&
+            !$0.isStale &&
+            !$0.isPromoExpired
+        }) else { return nil }
+        return personal.price == observation.price
+    }
+
     // MARK: - Summary & Mode Picker
 
     private var modePickerRow: some View {
@@ -207,6 +321,12 @@ struct PricesView: View {
                     statTile(value: "\(uniqueStoreCount)", label: "stores", icon: "building.2.fill", color: .green)
                     if staleCount > 0 {
                         statTile(value: "\(staleCount)", label: "stale", icon: "clock.fill", color: .orange)
+                    }
+                    if !allNeedsPriceEntries.isEmpty {
+                        statTile(value: "\(allNeedsPriceEntries.count)", label: "need price", icon: "questionmark.circle.fill", color: .red)
+                    }
+                    if !allCommunityObservations.isEmpty {
+                        statTile(value: "\(uniqueCommunityProductCount)", label: "community", icon: "person.3.fill", color: .purple)
                     }
                     if let lastDate = lastObservedDate {
                         statTile(
@@ -248,6 +368,7 @@ struct PricesView: View {
     private var uniqueStoreCount: Int { store.enabledBranches.count }
     private var staleCount: Int { store.priceObservations.filter { $0.isStale }.count }
     private var lastObservedDate: Date? { store.priceObservations.map { $0.observedDate }.max() }
+    private var uniqueCommunityProductCount: Int { Set(allCommunityObservations.map { $0.productName }).count }
 
     private func cheapestObservationID(in group: [PriceObservation]) -> UUID? {
         var latestByStore: [UUID: PriceObservation] = [:]
@@ -421,6 +542,10 @@ struct PriceObservationRow: View {
     var communityConfidence: PriceConfidence?
     var isCommunityOutlier: Bool = false
     var isCheapest: Bool = false
+    /// `true`/`false` when there's a personal price at the same product +
+    /// store to compare against (Community mode); `nil` when there's
+    /// nothing to compare, in which case nothing extra is shown.
+    var matchesPersonalPrice: Bool? = nil
 
     var priceText: String {
         "\(observation.currency.symbol) \(NSDecimalNumber(decimal: observation.price).stringValue)"
@@ -475,6 +600,14 @@ struct PriceObservationRow: View {
                         .font(.caption2)
                         .foregroundStyle(.red)
                 }
+                if let matchesPersonalPrice {
+                    Label(
+                        matchesPersonalPrice ? "Confirms your price" : "Differs from your price",
+                        systemImage: matchesPersonalPrice ? "checkmark.seal.fill" : "arrow.left.arrow.right.circle.fill"
+                    )
+                    .font(.caption2)
+                    .foregroundStyle(matchesPersonalPrice ? .green : .blue)
+                }
                 confidencePill
             }
         }
@@ -527,5 +660,30 @@ struct PriceObservationRow: View {
             return adjusted.rawValue
         }
         return "\(adjusted.rawValue) freshness"
+    }
+}
+
+// MARK: - Needs Price Row
+
+private struct NeedsPriceRow: View {
+    let entry: AppStore.NeedsPriceEntry
+    let onAddPrice: () -> Void
+
+    var body: some View {
+        HStack(alignment: .top) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(entry.productName)
+                    .font(.subheadline.weight(.medium))
+                Text(entry.sources.joined(separator: " · "))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+            Spacer()
+            Button("Add Price", action: onAddPrice)
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+        }
+        .padding(.vertical, 3)
     }
 }
