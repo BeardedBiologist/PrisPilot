@@ -16,6 +16,9 @@ struct SettingsView: View {
             List {
                 Section {
                     accountRow
+                        .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
                 } footer: {
                     if !authStore.state.isSignedIn {
                         Text("Sign in to sync across devices and share with your household.")
@@ -60,10 +63,13 @@ struct SettingsView: View {
                     HStack(spacing: 8) {
                         Image(systemName: store.isUsingLiveAI ? "checkmark.circle.fill" : "circle.dashed")
                             .foregroundStyle(store.isUsingLiveAI ? .green : Color(.systemGray3))
+                            .contentTransition(.symbolEffect(.replace))
+                            .symbolEffect(.pulse, isActive: store.isUsingLiveAI)
                         Text(store.isUsingLiveAI ? "Live AI active" : "Mock AI (no key set)")
                             .foregroundStyle(store.isUsingLiveAI ? .primary : .secondary)
                             .font(.subheadline)
                     }
+                    .animation(.smooth, value: store.isUsingLiveAI)
                 }
 
                 Section("Community Pricing") {
@@ -168,25 +174,28 @@ struct SettingsView: View {
                 AccountManagementView()
                     .environment(authStore)
             } label: {
-                HStack(spacing: 12) {
+                HStack(spacing: 14) {
                     Text(user.initials)
-                        .font(.subheadline.weight(.semibold))
+                        .font(.title3.weight(.semibold))
                         .foregroundStyle(.white)
-                        .frame(width: 36, height: 36)
+                        .frame(width: 56, height: 56)
                         .background(Color.blue, in: Circle())
-                    VStack(alignment: .leading, spacing: 2) {
+                    VStack(alignment: .leading, spacing: 3) {
                         Text(user.displayName ?? "Apple Account")
-                            .font(.subheadline.weight(.medium))
+                            .font(.headline)
                             .foregroundStyle(.primary)
                         if let email = user.email {
                             Text(email)
-                                .font(.caption)
+                                .font(.subheadline)
                                 .foregroundStyle(.secondary)
                         }
                     }
                 }
-                .padding(.vertical, 4)
+                .padding(16)
+                .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .shadow(color: .black.opacity(0.05), radius: 4, y: 2)
             }
+            .buttonStyle(.plain)
         }
     }
 }

@@ -3,6 +3,7 @@ import SwiftUI
 struct OnboardingView: View {
     @Environment(AppStore.self) private var store
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let onStartAISetup: () -> Void
     @State private var step: Step = .welcome
     @State private var selectedBranchIDs: Set<UUID> = []
@@ -21,16 +22,38 @@ struct OnboardingView: View {
 
     var body: some View {
         NavigationStack {
-            switch step {
-            case .welcome:
-                welcomeStep
-            case .manualQuestion(let index):
-                manualQuestionStep(index)
-            case .done:
-                doneStep
+            Group {
+                switch step {
+                case .welcome:
+                    welcomeStep
+                case .manualQuestion(let index):
+                    manualQuestionStep(index)
+                case .done:
+                    doneStep
+                }
             }
+            .transition(stepTransition)
         }
         .interactiveDismissDisabled(step != .welcome)
+    }
+
+    private var stepTransition: AnyTransition {
+        reduceMotion
+            ? .opacity
+            : .asymmetric(
+                insertion: .move(edge: .trailing).combined(with: .opacity),
+                removal: .move(edge: .leading).combined(with: .opacity)
+            )
+    }
+
+    private func setStep(_ newStep: Step) {
+        guard !reduceMotion else {
+            step = newStep
+            return
+        }
+        withAnimation(.smooth) {
+            step = newStep
+        }
     }
 
     // MARK: - Welcome
@@ -65,7 +88,7 @@ struct OnboardingView: View {
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 6)
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.glass)
                 .controlSize(.large)
 
                 Button {
@@ -77,7 +100,7 @@ struct OnboardingView: View {
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 6)
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(.glassProminent)
                 .controlSize(.large)
 
                 Button("Skip for now") {
@@ -119,6 +142,7 @@ struct OnboardingView: View {
             .padding(.bottom, 10)
 
             ProgressView(value: Double(index + 1), total: Double(OnboardingFlow.questions.count))
+                .animation(.smooth, value: index)
                 .padding(.horizontal, 24)
                 .padding(.bottom, 10)
 
@@ -131,7 +155,7 @@ struct OnboardingView: View {
             Button(index == OnboardingFlow.questions.count - 1 ? "Finish setup" : "Continue") {
                 saveManualAnswer(question, index: index)
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(.glassProminent)
             .controlSize(.large)
             .disabled(!canContinue(question))
             .padding(.horizontal, 24)
@@ -174,9 +198,11 @@ struct OnboardingView: View {
                                     Spacer()
                                     Image(systemName: selectedOption == option ? "checkmark.circle.fill" : "circle")
                                         .foregroundStyle(selectedOption == option ? .blue : Color(.systemGray3))
+                                        .contentTransition(.symbolEffect(.replace))
                                 }
                                 .padding(14)
                                 .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                                .animation(.snappy, value: selectedOption)
                             }
                             .buttonStyle(.plain)
                         }
@@ -218,8 +244,10 @@ struct OnboardingView: View {
                                 Spacer()
                                 Image(systemName: selectedBranchIDs.contains(branch.id) ? "checkmark.circle.fill" : "circle")
                                     .foregroundStyle(selectedBranchIDs.contains(branch.id) ? .blue : Color(.systemGray3))
+                                    .contentTransition(.symbolEffect(.replace))
                             }
                             .contentShape(Rectangle())
+                            .animation(.snappy, value: selectedBranchIDs)
                             .onTapGesture {
                                 if selectedBranchIDs.contains(branch.id) {
                                     selectedBranchIDs.remove(branch.id)
@@ -273,7 +301,7 @@ struct OnboardingView: View {
                 store.settings.onboardingCompleted = true
                 dismiss()
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(.glassProminent)
             .controlSize(.large)
             .padding(.bottom, 48)
         }
@@ -296,7 +324,7 @@ struct OnboardingView: View {
         if selectedBranchIDs.isEmpty {
             selectedBranchIDs = Set(store.branches.map(\.id))
         }
-        step = .manualQuestion(0)
+        setStep(.manualQuestion(0))
     }
 
     private func loadQuestionState(_ question: OnboardingQuestion) {
@@ -338,10 +366,10 @@ struct OnboardingView: View {
         selectedOption = nil
         freeformAnswer = ""
         if index + 1 < OnboardingFlow.questions.count {
-            step = .manualQuestion(index + 1)
+            setStep(.manualQuestion(index + 1))
         } else {
             store.settings.onboardingCompleted = true
-            step = .done
+            setStep(.done)
         }
     }
 
@@ -349,9 +377,9 @@ struct OnboardingView: View {
         selectedOption = nil
         freeformAnswer = ""
         if index == 0 {
-            step = .welcome
+            setStep(.welcome)
         } else {
-            step = .manualQuestion(index - 1)
+            setStep(.manualQuestion(index - 1))
         }
     }
 

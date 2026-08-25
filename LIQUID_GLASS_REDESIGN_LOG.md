@@ -4,6 +4,29 @@ Companion to `LIQUID_GLASS_REDESIGN_PLAN.md`. Append an entry per work session/p
 
 ---
 
+## 2026-08-25 16:43 CEST — Phase 5 (Settings & Onboarding) implemented
+
+All of `LIQUID_GLASS_REDESIGN_PLAN.md` §9 done. Compiles clean (`xcodebuild build`, compile-only). **Not yet verified on-device** — Phases 2–5 have all landed back-to-back without an on-device check yet, per Josh's "keep going" instructions this session.
+
+**`Features/Settings/SettingsView.swift`:**
+- `accountRow`'s `.signedIn` case redesigned as a hero card: avatar grew from 36pt to 56pt, name promoted to `.headline`, wrapped in `.padding(16)` + `Color(.secondarySystemGroupedBackground)` rounded-rect background + a subtle shadow — same "elevated card" language `ShoppingListCard` already uses elsewhere in the app, kept deliberately glass-free per the plan ("glass-free but visually elevated") since this is a content row, not a control. The wrapping `Section` row got `.listRowInsets`/`.listRowBackground(.clear)`/`.listRowSeparator(.hidden)` so the card reads as a distinct floating element rather than a standard list row. `.unknown`/`.signedOut` cases untouched — there's no rich identity content to elevate before sign-in.
+- AI status row: the `checkmark.circle.fill`/`circle.dashed` swap now uses `.contentTransition(.symbolEffect(.replace))` + `.symbolEffect(.pulse, isActive: store.isUsingLiveAI)` (pulses only while genuinely live), with `.animation(.smooth, value: store.isUsingLiveAI)` covering the color change too.
+
+**`Features/Onboarding/OnboardingView.swift`:**
+- All CTA buttons across all three steps (`welcomeStep`'s two primary actions, `manualQuestionStep`'s Continue/Finish, `doneStep`'s Start Shopping) moved from `.borderedProminent`/`.bordered` to `.glassProminent`/`.glass`.
+- Step transitions: wrapped the `switch step` in a `Group` with `.transition(stepTransition)` — `.move(edge: .trailing)` in / `.move(edge: .leading)` out, both combined with opacity, falling back to plain `.opacity` under Reduce Motion. Every `step = ...` assignment (in `beginManualOnboarding`, `movePastQuestion`, `goBack`) now routes through a new `setStep(_:)` that wraps the mutation in `withAnimation(.smooth)` (skipped entirely under Reduce Motion) — same "single settable choke point" pattern used for the root tab bar's `selectTab(_:)` in Phase 1.
+- Answer-option and store-selection checkmarks (`circle` ↔ `checkmark.circle.fill`) both get `.contentTransition(.symbolEffect(.replace))` + a value-bound `.animation(.snappy, value:)`.
+- The linear step-progress `ProgressView` gets `.animation(.smooth, value: index)` so it eases between steps instead of jumping.
+- Left the existing `symbolEffect(.bounce, options: .nonRepeating)` on the welcome/done hero icons untouched — already correct per the plan.
+
+**Deviation from plan text, noted:** the plan called for "animate the active dot with `matchedGeometryEffect`" on the manual-question progress indicator, assuming a dot-based step indicator. The actual implementation is a single linear `ProgressView(value:total:)`, not dots — animated its value change instead, which delivers the same "smooth progress, not a jump" intent through the component that actually exists.
+
+### What's next
+- Josh to test Phases 2–5 together on-device — none have been visually confirmed yet this session.
+- Phase 6 (accessibility/performance verification pass) is the last item in the plan — it isn't new feature work, it's running the Reduce Transparency / Reduce Motion / VoiceOver / Dynamic Type / Instruments checklist from `LIQUID_GLASS_REDESIGN_PLAN.md` §10 against everything built in Phases 1–5. That needs Josh's device, not more blind code changes.
+
+---
+
 ## 2026-08-25 16:39 CEST — Phase 4 (Recipes) implemented
 
 All of `LIQUID_GLASS_REDESIGN_PLAN.md` §8 done. Compiles clean (`xcodebuild build`, compile-only). **Not yet verified on-device** — Phases 2–4 have now all landed back-to-back without an on-device check, at Josh's request to keep going.
