@@ -4,6 +4,40 @@ Companion to `LIQUID_GLASS_REDESIGN_PLAN.md`. Append an entry per work session/p
 
 ---
 
+## 2026-08-25 16:15 CEST — Phase 2 (Chat) implemented
+
+All of `LIQUID_GLASS_REDESIGN_PLAN.md` §6 done in one pass. Compiles clean after every step (`xcodebuild build`, compile-only). **Not yet verified on-device.**
+
+**`Features/Chat/ChatView.swift`:**
+- `chatHeader`: history button and the new-chat/memory button pair each wrapped in their own `GlassEffectContainer`; `HeaderIconButton` itself switched from a flat `.background(Color(.secondarySystemBackground), in: Circle())` to real `.glassEffect(.regular.interactive(), in: Circle())`. Header bar's own background stays `.thinMaterial` — it carries the session title/status text, which is content, not a control, so it stays off the "real glass" list per the plan's glass-is-for-controls principle.
+- Message list: each `MessageBubbleView` and `TypingIndicatorView` now carries a `.transition(messageTransition)` (push-from-bottom + opacity, or a plain `.opacity` cross-fade under Reduce Motion), driven by two value-bound `.animation(.snappy, value:)` modifiers on `viewModel.messages.count` and `viewModel.isTyping` — deliberately not threaded through `ChatViewModel`, which has ~8 separate call sites that mutate the message list (`sendMessage`, `handleAIOnboardingAnswer`, `approveAll`, `approve`, `reject`, `rejectAll`, `handleResponse`, `collapseIfAllTerminal` via `AppStore.appendMessage`/`replaceMessage`); a value-bound animation on the view side covers all of them without touching the view model.
+- `TypingIndicatorView` rebuilt on `PhaseAnimator` (three phases, one active dot at a time) instead of a manual `@State phase` + `sin()` + `.repeatForever` animation — falls back to static (non-animated) dots under Reduce Motion.
+- Composer send button: `.buttonStyle(.glassProminent)` + `.tint(GlassTheme.tint)` replacing the manual `Circle()` background fill; disabled-state dimming now comes from the system's own `.disabled()` handling instead of manual color branching. Added a `sendBounce` trigger (`@State`, toggled on tap) driving `.symbolEffect(.bounce, value: sendBounce)` on the arrow icon.
+
+**`Features/Chat/ActionProposalView.swift`:**
+- Reject-All → `.buttonStyle(.glass).tint(.red)`; Approve-All → `.buttonStyle(.glassProminent)` (replacing `.bordered`/`.borderedProminent`).
+- Per-row mini approve/reject circles in `ActionRow` left as plain colored circles, deliberately — these repeat once per action inside a scrolling list, and the plan calls out glass specifically for the card-level All buttons, not every repeated row control (also keeps glass-surface count bounded per the performance checklist item "glass effects are limited in number").
+- `cardHeader`'s item-count text gets `.contentTransition(.numericText())` + `.animation(.snappy, value:)`.
+- The `.completed` checkmark in `actionStatus` gets `.symbolEffect(.bounce, value: action.status)`.
+
+**`Features/Chat/ActivityTagView.swift`:**
+- `ActivityTagsView` wraps its tag rows in one `GlassEffectContainer`.
+- `ActivityTagRow` swapped its flat `.background(color.opacity(...), in: RoundedRectangle...)` + `.overlay(stroke)` combo for `.glassEffect(_, in: RoundedRectangle(cornerRadius: 10, style: .continuous))`, tinted with the row's existing semantic color (green for actions, purple for memories) so that color coding survives the glass conversion. `.interactive()` applied conditionally — only when `hasTappableRecord` is true — per the skill's "interactivity only where interaction exists" rule, since untappable rows are a no-op tap target (`guard hasTappableRecord else { return }`).
+- Did **not** use `glassEffectUnion` here despite the plan text suggesting it: these rows are a vertical stack of distinct, individually-tappable action records (each may navigate to a different detail sheet), not a horizontal run of decorative chips — unioning them into one merged glass shape would visually imply they're one control when they're not. Shared `GlassEffectContainer` still lets them blend at the edges without misrepresenting them as a single control.
+- Removed `backgroundOpacity` (dead code once the manual background was replaced).
+
+### What's next
+- Josh to test Chat on-device: header buttons, message send/receive motion, typing indicator, action approve/reject cards, activity tag rows.
+- Phase 3 (Shopping & Prices) is next per the plan — swipe actions, numeric price content transitions, zoom navigation transitions into detail views, camera viewfinder glass chrome.
+
+---
+
+## 2026-08-25 16:10 CEST — Phase 1 confirmed on-device; starting Phase 2 (Chat)
+
+Josh confirmed on his phone: glass tab bar looks right, Chat bubble is bigger/raised without the stray caption, Prices search field is back in the nav bar. **Phase 1 is done and closed.** Moving on to Phase 2 per `LIQUID_GLASS_REDESIGN_PLAN.md` §6 — see the entry below for what's in scope.
+
+---
+
 ## 2026-08-25 16:09 CEST — Polish pass: fake search-bar chrome, full bottom-clearance audit, Chat tab caption, search placement
 
 Four separate reports/requests from Josh, addressed in sequence:

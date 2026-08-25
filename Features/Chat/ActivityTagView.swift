@@ -13,9 +13,11 @@ struct ActivityTagsView: View {
                     .foregroundStyle(.secondary)
             }
         } else {
-            VStack(alignment: .leading, spacing: 6) {
-                ForEach(tags) { tag in
-                    ActivityTagRow(tag: tag)
+            GlassEffectContainer(spacing: GlassTheme.containerSpacing) {
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(tags) { tag in
+                        ActivityTagRow(tag: tag)
+                    }
                 }
             }
         }
@@ -31,7 +33,6 @@ struct ActivityTagRow: View {
     private var isMemory: Bool { tag.actionType.isMemoryAction }
     private var color: Color { isMemory ? .purple : .green }
     private var icon: String { isMemory ? "brain.head.profile" : "checkmark.circle.fill" }
-    private var backgroundOpacity: Double { colorScheme == .dark ? 0.28 : 0.12 }
     private var hasTappableRecord: Bool { !tag.affectedRecordIDs.isEmpty }
 
     var body: some View {
@@ -56,11 +57,10 @@ struct ActivityTagRow: View {
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
-            .background(color.opacity(backgroundOpacity), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .stroke(color.opacity(colorScheme == .dark ? 0.32 : 0.12), lineWidth: 1)
-            }
+            .glassEffect(
+                hasTappableRecord ? .regular.tint(color).interactive() : .regular.tint(color),
+                in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+            )
         }
         .buttonStyle(.plain)
         .sheet(isPresented: $showingDetail) {

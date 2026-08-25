@@ -45,7 +45,7 @@ struct ActionProposalView: View {
                             .frame(maxWidth: .infinity)
                             .font(.subheadline.weight(.semibold))
                     }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(.glass)
                     .tint(.red)
 
                     Button {
@@ -55,7 +55,7 @@ struct ActionProposalView: View {
                             .frame(maxWidth: .infinity)
                             .font(.subheadline.weight(.semibold))
                     }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.glassProminent)
                 }
             }
         }
@@ -75,6 +75,8 @@ struct ActionProposalView: View {
                 Text("\(actions.count + memoryProposals.count) item\((actions.count + memoryProposals.count) == 1 ? "" : "s") ready")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .contentTransition(.numericText())
+                    .animation(.snappy, value: actions.count + memoryProposals.count)
             }
 
             Spacer()
@@ -164,7 +166,9 @@ struct ActionRow: View {
         case .approved, .executing:
             ProgressView().scaleEffect(0.75)
         case .completed:
-            Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+            Image(systemName: "checkmark.circle.fill")
+                .foregroundStyle(.green)
+                .symbolEffect(.bounce, value: action.status)
         case .rejected:
             Image(systemName: "xmark.circle.fill").foregroundStyle(Color(.systemGray3))
         case .failed:

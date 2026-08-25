@@ -3,8 +3,10 @@ import SwiftUI
 struct ChatView: View {
     @Environment(AppStore.self) private var store
     @Environment(\.floatingTabBarInset) private var floatingTabBarInset
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var viewModel = ChatViewModel(appStore: .shared)
     @FocusState private var inputFocused: Bool
+    @State private var sendBounce = false
 
     var body: some View {
         NavigationStack {
@@ -31,12 +33,14 @@ struct ChatView: View {
 
     private var chatHeader: some View {
         HStack(spacing: 12) {
-            NavigationLink {
-                ChatHistoryView(viewModel: viewModel)
-            } label: {
-                HeaderIconButton(systemImage: "clock.arrow.circlepath")
+            GlassEffectContainer(spacing: GlassTheme.containerSpacing) {
+                NavigationLink {
+                    ChatHistoryView(viewModel: viewModel)
+                } label: {
+                    HeaderIconButton(systemImage: "clock.arrow.circlepath")
+                }
+                .accessibilityLabel("Chat history")
             }
-            .accessibilityLabel("Chat history")
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(store.selectedChatSession?.title ?? "PrisPilot")
@@ -54,20 +58,24 @@ struct ChatView: View {
 
             Spacer()
 
-            Button {
-                viewModel.startNewChat()
-            } label: {
-                HeaderIconButton(systemImage: "square.and.pencil")
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("New chat")
+            GlassEffectContainer(spacing: GlassTheme.containerSpacing) {
+                HStack(spacing: 10) {
+                    Button {
+                        viewModel.startNewChat()
+                    } label: {
+                        HeaderIconButton(systemImage: "square.and.pencil")
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("New chat")
 
-            NavigationLink {
-                MemoryListView()
-            } label: {
-                HeaderIconButton(systemImage: "brain.head.profile")
+                    NavigationLink {
+                        MemoryListView()
+                    } label: {
+                        HeaderIconButton(systemImage: "brain.head.profile")
+                    }
+                    .accessibilityLabel("AI memory")
+                }
             }
-            .accessibilityLabel("AI memory")
         }
         .padding(.horizontal, 18)
         .padding(.top, 14)
@@ -96,16 +104,20 @@ struct ChatView: View {
                             onStartNewChat: { viewModel.startNewChat() }
                         )
                         .id(message.id)
+                        .transition(messageTransition)
                     }
 
                     if viewModel.isTyping {
                         TypingIndicatorView()
                             .id("typing")
+                            .transition(messageTransition)
                     }
                 }
                 .padding(.horizontal, 18)
                 .padding(.top, 18)
                 .padding(.bottom, 12)
+                .animation(reduceMotion ? nil : .snappy, value: viewModel.messages.count)
+                .animation(reduceMotion ? nil : .snappy, value: viewModel.isTyping)
             }
             .scrollDismissesKeyboard(.interactively)
             .onChange(of: viewModel.messages.count) { _, _ in
@@ -115,6 +127,15 @@ struct ChatView: View {
                 if typing { scrollToBottom(proxy: proxy) }
             }
         }
+    }
+
+    private var messageTransition: AnyTransition {
+        reduceMotion
+            ? .opacity
+            : .asymmetric(
+                insertion: .push(from: .bottom).combined(with: .opacity),
+                removal: .opacity
+            )
     }
 
     private var shouldShowSuggestions: Bool {
@@ -158,15 +179,18 @@ struct ChatView: View {
                     }
 
                 Button {
+                    sendBounce.toggle()
                     viewModel.sendMessage()
                     inputFocused = false
                 } label: {
                     Image(systemName: "arrow.up")
                         .font(.system(size: 17, weight: .bold))
                         .foregroundStyle(.white)
+                        .symbolEffect(.bounce, value: sendBounce)
                         .frame(width: 42, height: 42)
-                        .background(canSend ? Color.blue : Color(.systemGray3), in: Circle())
                 }
+                .buttonStyle(.glassProminent)
+                .tint(GlassTheme.tint)
                 .disabled(!canSend)
                 .animation(.easeInOut(duration: 0.15), value: canSend)
                 .accessibilityLabel("Send message")
@@ -228,10 +252,7 @@ struct HeaderIconButton: View {
             .font(.system(size: 18, weight: .semibold))
             .foregroundStyle(.primary)
             .frame(width: 42, height: 42)
-            .background(Color(.secondarySystemBackground), in: Circle())
-            .overlay {
-                Circle().stroke(Color.primary.opacity(0.08), lineWidth: 1)
-            }
+            .glassEffect(.regular.interactive(), in: Circle())
     }
 }
 
@@ -335,18 +356,21 @@ struct ChatHistoryView: View {
 // MARK: - Typing Indicator
 
 struct TypingIndicatorView: View {
-    @State private var phase: Double = 0
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         HStack(alignment: .center, spacing: 10) {
             AssistantAvatar(size: 28)
 
-            HStack(spacing: 5) {
-                ForEach(0..<3) { i in
-                    Circle()
-                        .fill(Color(.systemGray3))
-                        .frame(width: 8, height: 8)
-                        .offset(y: dotOffset(for: i))
+            Group {
+                if reduceMotion {
+                    dots(activeIndex: nil)
+                } else {
+                    PhaseAnimator([0, 1, 2]) { activeIndex in
+                        dots(activeIndex: activeIndex)
+                    } animation: { _ in
+                        .easeInOut(duration: 0.3)
+                    }
                 }
             }
             .padding(.horizontal, 15)
@@ -358,16 +382,18 @@ struct TypingIndicatorView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .onAppear {
-            withAnimation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true)) {
-                phase = 1
-            }
-        }
     }
 
-    private func dotOffset(for index: Int) -> CGFloat {
-        let delay = Double(index) * 0.2
-        return phase == 0 ? 0 : sin((phase + delay) * .pi) * -4
+    private func dots(activeIndex: Int?) -> some View {
+        HStack(spacing: 5) {
+            ForEach(0..<3, id: \.self) { i in
+                Circle()
+                    .fill(Color(.systemGray3))
+                    .frame(width: 8, height: 8)
+                    .scaleEffect(activeIndex == i ? 1.35 : 1.0)
+                    .offset(y: activeIndex == i ? -4 : 0)
+            }
+        }
     }
 }
 
