@@ -76,11 +76,14 @@ extension View {
 }
 
 private struct ZoomTransitionIfAvailable<ID: Hashable>: ViewModifier {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let id: ID
     let namespace: Namespace.ID?
 
     func body(content: Content) -> some View {
-        if let namespace {
+        // Zoom is large motion — Reduce Motion falls back to the default
+        // push transition, same as the "no matching namespace" case below.
+        if let namespace, !reduceMotion {
             content.navigationTransition(.zoom(sourceID: id, in: namespace))
         } else {
             content
@@ -90,12 +93,13 @@ private struct ZoomTransitionIfAvailable<ID: Hashable>: ViewModifier {
 
 extension View {
     /// Applies `.navigationTransition(.zoom(sourceID:in:))` only when a
-    /// namespace is actually provided. Use on a destination view that may be
-    /// reached from more than one place (e.g. a row push and a separate
-    /// activity-tag detail sheet) — only the entry point that owns a matching
-    /// `matchedTransitionSource` should pass a real namespace; every other
-    /// entry point passes `nil` and falls back to the default push
-    /// transition instead of misbehaving with an unmatched source.
+    /// namespace is actually provided and Reduce Motion is off. Use on a
+    /// destination view that may be reached from more than one place (e.g. a
+    /// row push and a separate activity-tag detail sheet) — only the entry
+    /// point that owns a matching `matchedTransitionSource` should pass a
+    /// real namespace; every other entry point passes `nil` and falls back
+    /// to the default push transition instead of misbehaving with an
+    /// unmatched source.
     func zoomTransition<ID: Hashable>(id: ID, namespace: Namespace.ID?) -> some View {
         modifier(ZoomTransitionIfAvailable(id: id, namespace: namespace))
     }

@@ -5,6 +5,7 @@ import MapKit
 struct SettingsView: View {
     @Environment(AppStore.self) private var store
     @Environment(AuthStore.self) private var authStore
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage("appearanceMode") private var appearanceModeRaw: String = AppearanceMode.system.rawValue
     @State private var showSignIn = false
     @State private var showOnboarding = false
@@ -82,6 +83,7 @@ struct SettingsView: View {
                             .foregroundStyle(store.isUsingLiveAI ? .green : Color(.systemGray3))
                             .contentTransition(.symbolEffect(.replace))
                             .symbolEffect(.pulse, isActive: store.isUsingLiveAI)
+                            .symbolEffectsRemoved(reduceMotion)
                         Text(store.isUsingLiveAI ? "Live AI active" : "Mock AI (no key set)")
                             .foregroundStyle(store.isUsingLiveAI ? .primary : .secondary)
                             .font(.subheadline)

@@ -41,6 +41,7 @@ struct RecipesView: View {
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button { showAddRecipe = true } label: { Image(systemName: "plus") }
+                        .accessibilityLabel("Add recipe")
                 }
             }
             .sheet(isPresented: $showAddRecipe) {
@@ -89,6 +90,7 @@ struct RecipesView: View {
 }
 
 struct RecipeRow: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let recipe: Recipe
 
     var body: some View {
@@ -114,6 +116,7 @@ struct RecipeRow: View {
                 .font(.caption)
                 .contentTransition(.symbolEffect(.replace))
                 .symbolEffect(.bounce, value: recipe.isFavorite)
+                .symbolEffectsRemoved(reduceMotion)
         }
         .padding(.vertical, 4)
         .animation(.snappy, value: recipe.isFavorite)

@@ -140,6 +140,7 @@ struct RootTabView: View {
                 Text(title)
                     .font(.caption2.weight(.semibold))
                     .lineLimit(1)
+                    .minimumScaleFactor(0.75)
             }
             .foregroundStyle(isSelected ? GlassTheme.tint : .primary)
             .frame(maxWidth: .infinity)

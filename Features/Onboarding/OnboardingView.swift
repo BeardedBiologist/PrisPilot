@@ -67,6 +67,7 @@ struct OnboardingView: View {
                     .font(.system(size: 88))
                     .foregroundStyle(.blue)
                     .symbolEffect(.bounce, options: .nonRepeating)
+                    .symbolEffectsRemoved(reduceMotion)
 
                 VStack(spacing: 8) {
                     Text("PrisPilot")
@@ -142,7 +143,7 @@ struct OnboardingView: View {
             .padding(.bottom, 10)
 
             ProgressView(value: Double(index + 1), total: Double(OnboardingFlow.questions.count))
-                .animation(.smooth, value: index)
+                .animation(reduceMotion ? nil : .smooth, value: index)
                 .padding(.horizontal, 24)
                 .padding(.bottom, 10)
 
@@ -199,10 +200,11 @@ struct OnboardingView: View {
                                     Image(systemName: selectedOption == option ? "checkmark.circle.fill" : "circle")
                                         .foregroundStyle(selectedOption == option ? .blue : Color(.systemGray3))
                                         .contentTransition(.symbolEffect(.replace))
+                                        .symbolEffectsRemoved(reduceMotion)
                                 }
                                 .padding(14)
                                 .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                                .animation(.snappy, value: selectedOption)
+                                .animation(reduceMotion ? nil : .snappy, value: selectedOption)
                             }
                             .buttonStyle(.plain)
                         }
@@ -245,9 +247,10 @@ struct OnboardingView: View {
                                 Image(systemName: selectedBranchIDs.contains(branch.id) ? "checkmark.circle.fill" : "circle")
                                     .foregroundStyle(selectedBranchIDs.contains(branch.id) ? .blue : Color(.systemGray3))
                                     .contentTransition(.symbolEffect(.replace))
+                                    .symbolEffectsRemoved(reduceMotion)
                             }
                             .contentShape(Rectangle())
-                            .animation(.snappy, value: selectedBranchIDs)
+                            .animation(reduceMotion ? nil : .snappy, value: selectedBranchIDs)
                             .onTapGesture {
                                 if selectedBranchIDs.contains(branch.id) {
                                     selectedBranchIDs.remove(branch.id)
@@ -273,6 +276,7 @@ struct OnboardingView: View {
                     .font(.system(size: 80))
                     .foregroundStyle(.green)
                     .symbolEffect(.bounce, options: .nonRepeating)
+                    .symbolEffectsRemoved(reduceMotion)
 
                 VStack(spacing: 10) {
                     Text("You're all set!")

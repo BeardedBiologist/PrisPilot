@@ -107,6 +107,7 @@ struct ActionProposalView: View {
 // MARK: - Action Row
 
 struct ActionRow: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let action: ProposedAction
     var onApprove: () -> Void
     var onReject: () -> Void
@@ -151,6 +152,7 @@ struct ActionRow: View {
                         .background(Color.red.opacity(0.1), in: Circle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Reject \(action.type.displayName)")
 
                 Button { onApprove() } label: {
                     Image(systemName: "checkmark")
@@ -162,6 +164,7 @@ struct ActionRow: View {
                 .buttonStyle(.plain)
                 .disabled(!action.validationResult.isValid)
                 .opacity(action.validationResult.isValid ? 1 : 0.45)
+                .accessibilityLabel("Approve \(action.type.displayName)")
             }
         case .approved, .executing:
             ProgressView().scaleEffect(0.75)
@@ -169,6 +172,7 @@ struct ActionRow: View {
             Image(systemName: "checkmark.circle.fill")
                 .foregroundStyle(.green)
                 .symbolEffect(.bounce, value: action.status)
+                .symbolEffectsRemoved(reduceMotion)
         case .rejected:
             Image(systemName: "xmark.circle.fill").foregroundStyle(Color(.systemGray3))
         case .failed:

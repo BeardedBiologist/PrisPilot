@@ -31,6 +31,7 @@ struct ShoppingView: View {
                     Button { showAddList = true } label: {
                         Image(systemName: "plus")
                     }
+                    .accessibilityLabel("Add shopping list")
                 }
             }
             .sheet(isPresented: $showAddList) {
@@ -183,6 +184,7 @@ struct ShoppingListCard: View {
 
 struct ShoppingListDetailView: View {
     @Environment(AppStore.self) private var store
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let listID: UUID
     /// Set only when pushed from `ShoppingView`'s own list — that's the only
     /// place a matching `matchedTransitionSource` exists. `nil` for other
@@ -257,20 +259,25 @@ struct ShoppingListDetailView: View {
                         } label: {
                             Image(systemName: "wand.and.sparkles")
                                 .symbolEffect(.variableColor.iterative, options: .repeating, isActive: isOptimizing)
+                                .symbolEffectsRemoved(reduceMotion)
                         }
                         .disabled(isOptimizing)
+                        .accessibilityLabel("Optimize shopping list")
                     }
                     if !(list?.items.isEmpty ?? true) {
                         Button { showComparison = true } label: {
                             Image(systemName: "chart.bar.xaxis")
                         }
+                        .accessibilityLabel("Compare store prices")
                     }
                     Button { showBarcodeScanner = true } label: {
                         Image(systemName: "barcode.viewfinder")
                     }
+                    .accessibilityLabel("Scan barcode")
                     Button { showAddItem = true } label: {
                         Image(systemName: "plus")
                     }
+                    .accessibilityLabel("Add item")
                 }
             }
         }
@@ -531,6 +538,7 @@ struct ShoppingListDetailView: View {
 // MARK: - Item Row View
 
 struct ShoppingItemRow: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let item: ShoppingListItem
 
     var body: some View {
@@ -540,6 +548,7 @@ struct ShoppingItemRow: View {
                 .font(.title2)
                 .contentTransition(.symbolEffect(.replace))
                 .symbolEffect(.bounce, value: item.isCompleted)
+                .symbolEffectsRemoved(reduceMotion)
                 .animation(.snappy, value: item.isCompleted)
 
             VStack(alignment: .leading, spacing: 3) {

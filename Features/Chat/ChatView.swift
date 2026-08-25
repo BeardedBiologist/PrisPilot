@@ -187,6 +187,7 @@ struct ChatView: View {
                         .font(.system(size: 17, weight: .bold))
                         .foregroundStyle(.white)
                         .symbolEffect(.bounce, value: sendBounce)
+                        .symbolEffectsRemoved(reduceMotion)
                         .frame(width: 42, height: 42)
                 }
                 .buttonStyle(.glassProminent)
@@ -289,7 +290,7 @@ struct SuggestedPromptGrid: View {
             }
             .padding(.horizontal, 1)
         }
-        .frame(height: 34)
+        .frame(minHeight: 34)
     }
 }
 

@@ -85,8 +85,11 @@ struct PricesView: View {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     HStack {
                         Button { showReceiptScanner = true } label: { Image(systemName: "doc.viewfinder") }
+                            .accessibilityLabel("Scan receipt")
                         Button { showBarcodeScanner = true } label: { Image(systemName: "barcode.viewfinder") }
+                            .accessibilityLabel("Scan barcode")
                         Button { showAddPrice = true } label: { Image(systemName: "plus") }
+                            .accessibilityLabel("Add price")
                     }
                 }
             }
