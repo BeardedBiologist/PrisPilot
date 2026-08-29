@@ -686,8 +686,7 @@ class AppStore {
             let listID = shoppingLists[idx].id
             switch statusRaw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
             case "active": activateList(listID)
-            case "completed", "done": completeShoppingList(listID)
-            case "archived": archiveShoppingList(listID)
+            case "completed", "done", "archived": archiveShoppingList(listID)
             default: return []
             }
             return [listID]

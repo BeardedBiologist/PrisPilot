@@ -56,7 +56,7 @@ private struct MatkasseBoxRow: View {
         HStack {
             VStack(alignment: .leading, spacing: 3) {
                 Text(box.provider)
-                    .font(.headline)
+                    .font(.subheadline.weight(.semibold))
                 Text("Delivery week of \(box.deliveryWeekStartDate.formatted(date: .abbreviated, time: .omitted))")
                     .font(.caption)
                     .foregroundStyle(.secondary)

@@ -168,16 +168,19 @@ struct MealPlanView: View {
 
     private var controlsSection: some View {
         Section {
-            Picker("Range", selection: $range) {
-                ForEach(PlannerRange.allCases) { Text($0.rawValue).tag($0) }
-            }
-            .pickerStyle(.segmented)
-
-            if range != .day {
-                Picker("View", selection: $viewMode) {
-                    ForEach(PlannerViewMode.allCases) { Text($0.rawValue).tag($0) }
+            HStack(spacing: 8) {
+                Picker("Range", selection: $range) {
+                    ForEach(PlannerRange.allCases) { Text($0.rawValue).tag($0) }
                 }
                 .pickerStyle(.segmented)
+
+                if range != .day {
+                    Picker("View", selection: $viewMode) {
+                        ForEach(PlannerViewMode.allCases) { Text($0.rawValue).tag($0) }
+                    }
+                    .pickerStyle(.segmented)
+                    .frame(width: 112)
+                }
             }
         }
         .listRowBackground(Color.clear)
@@ -283,12 +286,12 @@ struct MealPlanView: View {
     }
 
     private func summaryTile(value: String, label: String, icon: String, color: Color) -> some View {
-        VStack(spacing: 4) {
+        VStack(spacing: 3) {
             Image(systemName: icon)
-                .font(.title3)
+                .font(.callout)
                 .foregroundStyle(color)
             Text(value)
-                .font(.headline)
+                .font(.subheadline.weight(.semibold))
                 .minimumScaleFactor(0.7)
                 .lineLimit(1)
             Text(label)
@@ -296,8 +299,8 @@ struct MealPlanView: View {
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
         }
-        .frame(width: 84, height: 76)
-        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12))
+        .frame(width: 76, height: 56)
+        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 10))
     }
 
     // MARK: List layout

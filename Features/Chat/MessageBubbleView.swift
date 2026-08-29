@@ -43,24 +43,24 @@ struct TextBubble: View {
     let isUser: Bool
 
     var body: some View {
-        HStack(alignment: .bottom, spacing: 10) {
+        HStack(alignment: .bottom, spacing: 8) {
             if isUser {
-                Spacer(minLength: 46)
+                Spacer(minLength: 40)
                 userBubble
             } else {
-                AssistantAvatar(size: 32)
+                AssistantAvatar(size: 26)
                 assistantBubble
-                Spacer(minLength: 44)
+                Spacer(minLength: 36)
             }
         }
     }
 
     private var userBubble: some View {
         Text(text)
-            .font(.body)
-            .lineSpacing(2)
-            .padding(.horizontal, 15)
-            .padding(.vertical, 11)
+            .font(.callout)
+            .lineSpacing(1.5)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 9)
             .background(
                 LinearGradient(
                     colors: [.blue, Color(red: 0.0, green: 0.52, blue: 0.92)],
@@ -68,40 +68,40 @@ struct TextBubble: View {
                     endPoint: .bottomTrailing
                 ),
                 in: UnevenRoundedRectangle(
-                    topLeadingRadius: 20,
-                    bottomLeadingRadius: 20,
-                    bottomTrailingRadius: 6,
-                    topTrailingRadius: 20,
+                    topLeadingRadius: 18,
+                    bottomLeadingRadius: 18,
+                    bottomTrailingRadius: 5,
+                    topTrailingRadius: 18,
                     style: .continuous
                 )
             )
             .foregroundStyle(.white)
             .textSelection(.enabled)
-            .shadow(color: .blue.opacity(0.18), radius: 10, y: 4)
+            .shadow(color: .blue.opacity(0.15), radius: 8, y: 3)
     }
 
     private var assistantBubble: some View {
         Text(text)
-            .font(.body)
-            .lineSpacing(2)
-            .padding(.horizontal, 15)
-            .padding(.vertical, 12)
+            .font(.callout)
+            .lineSpacing(1.5)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 9)
             .background(
                 Color(.secondarySystemBackground),
                 in: UnevenRoundedRectangle(
-                    topLeadingRadius: 20,
-                    bottomLeadingRadius: 6,
-                    bottomTrailingRadius: 20,
-                    topTrailingRadius: 20,
+                    topLeadingRadius: 18,
+                    bottomLeadingRadius: 5,
+                    bottomTrailingRadius: 18,
+                    topTrailingRadius: 18,
                     style: .continuous
                 )
             )
             .overlay {
                 UnevenRoundedRectangle(
-                    topLeadingRadius: 20,
-                    bottomLeadingRadius: 6,
-                    bottomTrailingRadius: 20,
-                    topTrailingRadius: 20,
+                    topLeadingRadius: 18,
+                    bottomLeadingRadius: 5,
+                    bottomTrailingRadius: 18,
+                    topTrailingRadius: 18,
                     style: .continuous
                 )
                 .stroke(Color.primary.opacity(0.08), lineWidth: 1)
@@ -115,11 +115,11 @@ struct AssistantMessageContainer<Content: View>: View {
     @ViewBuilder let content: Content
 
     var body: some View {
-        HStack(alignment: .top, spacing: 10) {
-            AssistantAvatar(size: 32)
+        HStack(alignment: .top, spacing: 8) {
+            AssistantAvatar(size: 26)
             content
                 .frame(maxWidth: .infinity, alignment: .leading)
-            Spacer(minLength: 24)
+            Spacer(minLength: 20)
         }
     }
 }
@@ -131,22 +131,22 @@ struct OnboardingCompleteBubble: View {
 
     var body: some View {
         AssistantMessageContainer {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 9) {
+                HStack(spacing: 8) {
                     Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 22, weight: .semibold))
+                        .font(.system(size: 17, weight: .semibold))
                         .foregroundStyle(.green)
-                    VStack(alignment: .leading, spacing: 2) {
+                    VStack(alignment: .leading, spacing: 1) {
                         Text("Setup complete")
-                            .font(.headline.weight(.semibold))
+                            .font(.subheadline.weight(.semibold))
                         Text("Thanks. PrisPilot is ready to use.")
-                            .font(.subheadline)
+                            .font(.caption)
                             .foregroundStyle(.secondary)
                     }
                 }
 
                 Text("Open a new chat when you are ready to log prices, build a shopping list, or plan a cheap shop.")
-                    .font(.subheadline)
+                    .font(.caption)
                     .foregroundStyle(.secondary)
                     .textSelection(.enabled)
 
@@ -154,15 +154,16 @@ struct OnboardingCompleteBubble: View {
                     onStartNewChat()
                 } label: {
                     Label("Start new chat", systemImage: "plus.bubble.fill")
-                        .font(.subheadline.weight(.semibold))
+                        .font(.caption.weight(.semibold))
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
+                .controlSize(.small)
             }
-            .padding(14)
-            .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .padding(12)
+            .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
             .overlay {
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
                     .stroke(Color.primary.opacity(0.08), lineWidth: 1)
             }
         }
@@ -175,25 +176,26 @@ struct ErrorBubble: View {
     let error: AIServiceError
 
     var body: some View {
-        HStack(alignment: .top, spacing: 10) {
-            AssistantAvatar(size: 32)
-            HStack(alignment: .top, spacing: 10) {
+        HStack(alignment: .top, spacing: 8) {
+            AssistantAvatar(size: 26)
+            HStack(alignment: .top, spacing: 6) {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .foregroundStyle(.orange)
+                    .font(.caption)
                     .padding(.top, 1)
-                VStack(alignment: .leading, spacing: 3) {
+                VStack(alignment: .leading, spacing: 2) {
                     Text("AI request failed")
-                        .font(.subheadline.weight(.semibold))
+                        .font(.caption.weight(.semibold))
                     Text(error.localizedDescription)
-                        .font(.subheadline)
+                        .font(.caption)
                         .foregroundStyle(.secondary)
                         .textSelection(.enabled)
                 }
             }
-            .padding(14)
-            .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .padding(11)
+            .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             .overlay {
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
                     .stroke(Color.orange.opacity(0.18), lineWidth: 1)
             }
             Spacer(minLength: 24)

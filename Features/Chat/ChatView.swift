@@ -91,9 +91,9 @@ struct ChatView: View {
                 }
             }
         }
-        .padding(.horizontal, 18)
-        .padding(.top, 14)
-        .padding(.bottom, 12)
+        .padding(.horizontal, 14)
+        .padding(.top, 10)
+        .padding(.bottom, 10)
         .background(.thinMaterial)
         .overlay(alignment: .bottom) {
             Rectangle()
@@ -107,7 +107,7 @@ struct ChatView: View {
     private var messageList: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 18) {
+                LazyVStack(alignment: .leading, spacing: 10) {
                     ForEach(viewModel.messages) { message in
                         MessageBubbleView(
                             message: message,
@@ -127,9 +127,9 @@ struct ChatView: View {
                             .transition(messageTransition)
                     }
                 }
-                .padding(.horizontal, 18)
-                .padding(.top, 18)
-                .padding(.bottom, 12)
+                .padding(.horizontal, 14)
+                .padding(.top, 12)
+                .padding(.bottom, 8)
                 .animation(reduceMotion ? nil : .snappy, value: viewModel.messages.count)
                 .animation(reduceMotion ? nil : .snappy, value: viewModel.isTyping)
             }
@@ -194,13 +194,14 @@ struct ChatView: View {
             HStack(alignment: .bottom, spacing: 10) {
                 TextField("Ask PrisPilot...", text: $viewModel.inputText, axis: .vertical)
                     .textFieldStyle(.plain)
+                    .font(.callout)
                     .lineLimit(1...5)
                     .focused($inputFocused)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 12)
-                    .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 9)
+                    .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
                     .overlay {
-                        RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
                             .stroke(Color.primary.opacity(0.08), lineWidth: 1)
                     }
 
@@ -211,9 +212,9 @@ struct ChatView: View {
                     }
                 } label: {
                     Image(systemName: speechInput.isRecording ? "stop.fill" : "mic.fill")
-                        .font(.system(size: 17, weight: .bold))
+                        .font(.system(size: 15, weight: .bold))
                         .foregroundStyle(speechInput.isRecording ? .white : GlassTheme.tint)
-                        .frame(width: 42, height: 42)
+                        .frame(width: 36, height: 36)
                         .glassEffect(
                             speechInput.isRecording ? .regular.tint(.red).interactive() : .regular.interactive(),
                             in: Circle()
@@ -232,11 +233,11 @@ struct ChatView: View {
                     inputFocused = false
                 } label: {
                     Image(systemName: "arrow.up")
-                        .font(.system(size: 17, weight: .bold))
+                        .font(.system(size: 15, weight: .bold))
                         .foregroundStyle(.white)
                         .symbolEffect(.bounce, value: sendBounce)
                         .symbolEffectsRemoved(reduceMotion)
-                        .frame(width: 42, height: 42)
+                        .frame(width: 36, height: 36)
                 }
                 .buttonStyle(.glassProminent)
                 .tint(GlassTheme.tint)
@@ -245,9 +246,9 @@ struct ChatView: View {
                 .accessibilityLabel("Send message")
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.top, 12)
-        .padding(.bottom, 10)
+        .padding(.horizontal, 14)
+        .padding(.top, 8)
+        .padding(.bottom, 8)
         .background(.regularMaterial)
         .overlay(alignment: .top) {
             Rectangle()
@@ -308,9 +309,9 @@ struct HeaderIconButton: View {
 
     var body: some View {
         Image(systemName: systemImage)
-            .font(.system(size: 18, weight: .semibold))
+            .font(.system(size: 15, weight: .semibold))
             .foregroundStyle(.primary)
-            .frame(width: 42, height: 42)
+            .frame(width: 34, height: 34)
             .glassEffect(.regular.interactive(), in: Circle())
     }
 }
@@ -418,8 +419,8 @@ struct TypingIndicatorView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        HStack(alignment: .center, spacing: 10) {
-            AssistantAvatar(size: 28)
+        HStack(alignment: .center, spacing: 8) {
+            AssistantAvatar(size: 24)
 
             Group {
                 if reduceMotion {
@@ -432,11 +433,11 @@ struct TypingIndicatorView: View {
                     }
                 }
             }
-            .padding(.horizontal, 15)
-            .padding(.vertical, 11)
-            .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 17, style: .continuous))
+            .padding(.horizontal, 12)
+            .padding(.vertical, 9)
+            .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
             .overlay {
-                RoundedRectangle(cornerRadius: 17, style: .continuous)
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
                     .stroke(Color.primary.opacity(0.08), lineWidth: 1)
             }
         }

@@ -20,11 +20,11 @@ struct PriceComparisonView: View {
         List {
             // Summary header
             Section {
-                HStack(spacing: 12) {
+                HStack(spacing: 10) {
                     Image(systemName: "tag.fill")
                         .foregroundStyle(.blue)
-                        .font(.title2)
-                    VStack(alignment: .leading, spacing: 3) {
+                        .font(.callout)
+                    VStack(alignment: .leading, spacing: 2) {
                         Text("\(activeItems.count) items in list")
                             .font(.subheadline.weight(.medium))
                         Text("Based on \(store.priceObservations.count) recorded price observations")
@@ -32,7 +32,7 @@ struct PriceComparisonView: View {
                             .foregroundStyle(.secondary)
                     }
                 }
-                .padding(.vertical, 4)
+                .padding(.vertical, 2)
             }
 
             // Store estimates
@@ -257,9 +257,9 @@ struct ShoppingTripPlanView: View {
     let plan: PriceComparisonView.ShoppingTripPlan
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 8) {
             HStack {
-                VStack(alignment: .leading, spacing: 3) {
+                VStack(alignment: .leading, spacing: 2) {
                     Text(plan.selectedStores.map(\.displayName).joined(separator: " + "))
                         .font(.subheadline.weight(.semibold))
                     Text(plan.explanation)
@@ -269,7 +269,7 @@ struct ShoppingTripPlanView: View {
                 Spacer()
                 VStack(alignment: .trailing, spacing: 2) {
                     Text("kr \(formatDecimal(plan.estimatedTotal))")
-                        .font(.headline)
+                        .font(.subheadline.weight(.semibold))
                     if plan.travelCost > 0 {
                         Text("+ kr \(formatDecimal(plan.travelCost)) travel")
                             .font(.caption)
@@ -354,7 +354,7 @@ struct StoreEstimateRow: View {
             Spacer()
 
             Text("kr \(formatDecimal(estimate.estimatedTotal))")
-                .font(.headline)
+                .font(.subheadline.weight(.semibold))
                 .foregroundStyle(isCheapest ? .green : .primary)
         }
         .padding(.vertical, 4)

@@ -5,7 +5,6 @@ import SwiftUI
 enum ShoppingListSegment: String, CaseIterable, Identifiable {
     case active = "Active"
     case planned = "Planned"
-    case completed = "Completed"
     case archived = "Archived"
 
     var id: String { rawValue }
@@ -14,7 +13,6 @@ enum ShoppingListSegment: String, CaseIterable, Identifiable {
         switch self {
         case .active: return "No Active Lists"
         case .planned: return "No Planned Lists"
-        case .completed: return "No Completed Lists"
         case .archived: return "No Archived Lists"
         }
     }
@@ -23,7 +21,6 @@ enum ShoppingListSegment: String, CaseIterable, Identifiable {
         switch self {
         case .active: return "Create a list with the + button, or ask the AI in Chat."
         case .planned: return "Give a new list a planned date to see it here."
-        case .completed: return "Lists you mark complete show up here."
         case .archived: return "Lists you archive show up here."
         }
     }
@@ -32,7 +29,6 @@ enum ShoppingListSegment: String, CaseIterable, Identifiable {
         switch self {
         case .active: return "cart"
         case .planned: return "calendar"
-        case .completed: return "checkmark.circle"
         case .archived: return "archivebox"
         }
     }
@@ -78,12 +74,12 @@ struct ShoppingSummaryHeader: View {
     }
 
     private func statTile(value: String, label: String, icon: String, color: Color) -> some View {
-        VStack(spacing: 4) {
+        VStack(spacing: 3) {
             Image(systemName: icon)
-                .font(.title3)
+                .font(.callout)
                 .foregroundStyle(color)
             Text(value)
-                .font(.headline)
+                .font(.subheadline.weight(.semibold))
                 .minimumScaleFactor(0.7)
                 .lineLimit(1)
                 .contentTransition(.numericText())
@@ -92,8 +88,8 @@ struct ShoppingSummaryHeader: View {
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
         }
-        .frame(width: 88, height: 76)
-        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12))
+        .frame(width: 78, height: 56)
+        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 10))
     }
 }
 
@@ -125,22 +121,21 @@ struct ShoppingPrimaryActionsRow: View {
 
     private func actionButton(title: String, systemImage: String, isLoading: Bool = false, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            VStack(spacing: 4) {
-                if isLoading {
-                    ProgressView()
-                        .frame(height: 20)
-                } else {
-                    Image(systemName: systemImage)
-                        .font(.system(size: 18, weight: .semibold))
-                        .frame(height: 20)
-                }
+            Label {
                 Text(title)
-                    .font(.caption2.weight(.medium))
+                    .font(.caption.weight(.semibold))
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
+            } icon: {
+                if isLoading {
+                    ProgressView().scaleEffect(0.75)
+                } else {
+                    Image(systemName: systemImage)
+                        .font(.system(size: 13, weight: .semibold))
+                }
             }
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 10)
+            .padding(.vertical, 7)
         }
         .buttonStyle(.glass)
         .disabled(isLoading)

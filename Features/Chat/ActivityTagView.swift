@@ -5,19 +5,18 @@ struct ActivityTagsView: View {
 
     var body: some View {
         if tags.isEmpty {
-            HStack(spacing: 8) {
+            HStack(spacing: 6) {
                 Image(systemName: "xmark.circle")
+                    .font(.caption)
                     .foregroundStyle(Color(.systemGray3))
                 Text("Actions rejected")
-                    .font(.subheadline)
+                    .font(.caption)
                     .foregroundStyle(.secondary)
             }
         } else {
-            GlassEffectContainer(spacing: GlassTheme.containerSpacing) {
-                VStack(alignment: .leading, spacing: 6) {
-                    ForEach(tags) { tag in
-                        ActivityTagRow(tag: tag)
-                    }
+            VStack(alignment: .leading, spacing: 4) {
+                ForEach(tags) { tag in
+                    ActivityTagRow(tag: tag)
                 }
             }
         }
@@ -40,27 +39,29 @@ struct ActivityTagRow: View {
             guard hasTappableRecord else { return }
             showingDetail = true
         } label: {
-            HStack(spacing: 8) {
+            HStack(spacing: 6) {
                 Image(systemName: icon)
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(color)
                 Text(tag.summary)
-                    .font(.subheadline)
+                    .font(.caption.weight(.medium))
                     .foregroundStyle(colorScheme == .dark ? .white : .primary)
                     .textSelection(.enabled)
+                    .lineLimit(1)
                 if hasTappableRecord {
                     Spacer(minLength: 4)
                     Image(systemName: "chevron.right")
-                        .font(.system(size: 10, weight: .semibold))
+                        .font(.system(size: 9, weight: .semibold))
                         .foregroundStyle(color.opacity(0.5))
                 }
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .glassEffect(
-                hasTappableRecord ? .regular.tint(color).interactive() : .regular.tint(color),
-                in: RoundedRectangle(cornerRadius: 10, style: .continuous)
-            )
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(color.opacity(0.12), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .strokeBorder(color.opacity(0.2), lineWidth: 1)
+            }
         }
         .buttonStyle(.plain)
         .sheet(isPresented: $showingDetail) {

@@ -362,12 +362,12 @@ struct PricesView: View {
     }
 
     private func statTile(value: String, label: String, icon: String, color: Color) -> some View {
-        VStack(spacing: 4) {
+        VStack(spacing: 3) {
             Image(systemName: icon)
-                .font(.title3)
+                .font(.callout)
                 .foregroundStyle(color)
             Text(value)
-                .font(.headline)
+                .font(.subheadline.weight(.semibold))
                 .minimumScaleFactor(0.7)
                 .lineLimit(1)
             Text(label)
@@ -375,8 +375,8 @@ struct PricesView: View {
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
         }
-        .frame(width: 76, height: 76)
-        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12))
+        .frame(width: 70, height: 56)
+        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 10))
     }
 
     // MARK: - Helpers

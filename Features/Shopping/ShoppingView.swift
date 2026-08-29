@@ -14,8 +14,7 @@ struct ShoppingView: View {
         switch segment {
         case .active: return store.activeLists
         case .planned: return store.plannedLists
-        case .completed: return store.completedLists
-        case .archived: return store.archivedLists
+        case .archived: return store.archivedLists + store.completedLists
         }
     }
 
@@ -159,20 +158,10 @@ struct ShoppingView: View {
                 Label("Start Shopping", systemImage: "cart")
             }
         case .active:
-            Button { store.completeShoppingList(list.id) } label: {
-                Label("Mark Completed", systemImage: "checkmark.circle")
-            }
             Button { store.archiveShoppingList(list.id) } label: {
                 Label("Archive", systemImage: "archivebox")
             }
-        case .completed:
-            Button { store.archiveShoppingList(list.id) } label: {
-                Label("Archive", systemImage: "archivebox")
-            }
-            Button { store.reopenList(list.id) } label: {
-                Label("Reopen", systemImage: "arrow.uturn.backward")
-            }
-        case .archived:
+        case .completed, .archived:
             Button { store.reopenList(list.id) } label: {
                 Label("Reopen", systemImage: "arrow.uturn.backward")
             }
@@ -216,15 +205,16 @@ struct ShoppingListCard: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 8) {
             mainRow
             if showsBadgeRow {
                 badgeRow
             }
         }
-        .padding(16)
-        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 14))
-        .shadow(color: .black.opacity(0.05), radius: 4, x: 0, y: 2)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12))
+        .shadow(color: .black.opacity(0.04), radius: 3, x: 0, y: 1)
     }
 
     private var showsBadgeRow: Bool {
@@ -232,55 +222,55 @@ struct ShoppingListCard: View {
     }
 
     private var mainRow: some View {
-        HStack(alignment: .center, spacing: 16) {
+        HStack(alignment: .center, spacing: 12) {
             // Progress ring
             ZStack {
                 Circle()
-                    .stroke(Color(.systemGray5), lineWidth: 4)
+                    .stroke(Color(.systemGray5), lineWidth: 3)
                 Circle()
                     .trim(from: 0, to: progress)
-                    .stroke(progress == 1 ? Color.green : Color.blue, style: StrokeStyle(lineWidth: 4, lineCap: .round))
+                    .stroke(progress == 1 ? Color.green : Color.blue, style: StrokeStyle(lineWidth: 3, lineCap: .round))
                     .rotationEffect(.degrees(-90))
                     .animation(.snappy, value: progress)
                 Text("\(done)")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(progress == 1 ? .green : .primary)
                     .contentTransition(.numericText())
                     .animation(.snappy, value: done)
             }
-            .frame(width: 44, height: 44)
+            .frame(width: 36, height: 36)
 
             // Name and subtitle
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: 2) {
                 Text(list.name)
-                    .font(.headline)
+                    .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.primary)
                     .lineLimit(1)
                 Text(total == 0 ? "Empty" : "\(total) item\(total == 1 ? "" : "s")")
-                    .font(.subheadline)
+                    .font(.caption)
                     .foregroundStyle(.secondary)
             }
 
             Spacer()
 
             // Total
-            VStack(alignment: .trailing, spacing: 2) {
+            VStack(alignment: .trailing, spacing: 1) {
                 if let total = estimatedTotal {
                     Text("kr \(formatDecimal(total))")
-                        .font(.subheadline.weight(.semibold))
+                        .font(.caption.weight(.semibold))
                         .foregroundStyle(.primary)
                         .contentTransition(.numericText())
                         .animation(.snappy, value: total)
-                    Text("estimated")
+                    Text("est.")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 } else if total == 0 {
                     Image(systemName: "chevron.right")
-                        .font(.caption)
+                        .font(.caption2)
                         .foregroundStyle(Color(.systemGray3))
                 } else {
                     Text("No prices")
-                        .font(.caption)
+                        .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
             }

@@ -14,12 +14,12 @@ struct ActionProposalView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 8) {
             if let intro {
                 Text(intro)
-                    .font(.subheadline)
+                    .font(.callout)
                     .foregroundStyle(.secondary)
-                    .lineSpacing(2)
+                    .lineSpacing(1.5)
                     .textSelection(.enabled)
             }
 
@@ -29,21 +29,21 @@ struct ActionProposalView: View {
                 actionRows
                 memoryRows
             }
-            .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
             .overlay {
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
                     .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
             }
-            .shadow(color: .black.opacity(0.05), radius: 12, y: 5)
+            .shadow(color: .black.opacity(0.04), radius: 8, y: 3)
 
             if hasPending {
-                HStack(spacing: 10) {
+                HStack(spacing: 8) {
                     Button(role: .destructive) {
                         onRejectAll()
                     } label: {
                         Label("Reject", systemImage: "xmark")
                             .frame(maxWidth: .infinity)
-                            .font(.subheadline.weight(.semibold))
+                            .font(.caption.weight(.semibold))
                     }
                     .buttonStyle(.glass)
                     .tint(.red)
@@ -53,7 +53,7 @@ struct ActionProposalView: View {
                     } label: {
                         Label("Approve", systemImage: "checkmark")
                             .frame(maxWidth: .infinity)
-                            .font(.subheadline.weight(.semibold))
+                            .font(.caption.weight(.semibold))
                     }
                     .buttonStyle(.glassProminent)
                 }
@@ -62,18 +62,18 @@ struct ActionProposalView: View {
     }
 
     private var cardHeader: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 8) {
             Image(systemName: "wand.and.stars")
-                .font(.system(size: 15, weight: .bold))
+                .font(.system(size: 12, weight: .bold))
                 .foregroundStyle(.blue)
-                .frame(width: 30, height: 30)
+                .frame(width: 24, height: 24)
                 .background(Color.blue.opacity(0.1), in: Circle())
 
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 1) {
                 Text("Review changes")
-                    .font(.subheadline.weight(.semibold))
+                    .font(.caption.weight(.semibold))
                 Text("\(actions.count + memoryProposals.count) item\((actions.count + memoryProposals.count) == 1 ? "" : "s") ready")
-                    .font(.caption)
+                    .font(.caption2)
                     .foregroundStyle(.secondary)
                     .contentTransition(.numericText())
                     .animation(.snappy, value: actions.count + memoryProposals.count)
@@ -81,8 +81,8 @@ struct ActionProposalView: View {
 
             Spacer()
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 9)
     }
 
     private var actionRows: some View {
@@ -113,29 +113,29 @@ struct ActionRow: View {
     var onReject: () -> Void
 
     var body: some View {
-        HStack(alignment: .center, spacing: 12) {
+        HStack(alignment: .center, spacing: 10) {
             Image(systemName: action.type.systemImage)
-                .font(.system(size: 16, weight: .semibold))
+                .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(action.type.isMemoryAction ? .purple : .blue)
-                .frame(width: 34, height: 34)
+                .frame(width: 28, height: 28)
                 .background((action.type.isMemoryAction ? Color.purple : Color.blue).opacity(0.1), in: Circle())
 
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: 2) {
                 Text(action.summary)
-                    .font(.subheadline.weight(.medium))
+                    .font(.caption.weight(.medium))
                     .lineLimit(2)
                     .textSelection(.enabled)
                 Text(action.type.displayName)
-                    .font(.caption)
+                    .font(.caption2)
                     .foregroundStyle(.secondary)
                 validationMessage
             }
 
-            Spacer(minLength: 8)
+            Spacer(minLength: 6)
             actionStatus
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 9)
         .contentShape(Rectangle())
     }
 
@@ -143,12 +143,12 @@ struct ActionRow: View {
     private var actionStatus: some View {
         switch action.status {
         case .pending:
-            HStack(spacing: 8) {
+            HStack(spacing: 6) {
                 Button { onReject() } label: {
                     Image(systemName: "xmark")
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.system(size: 11, weight: .bold))
                         .foregroundStyle(.red)
-                        .frame(width: 30, height: 30)
+                        .frame(width: 26, height: 26)
                         .background(Color.red.opacity(0.1), in: Circle())
                 }
                 .buttonStyle(.plain)
@@ -156,9 +156,9 @@ struct ActionRow: View {
 
                 Button { onApprove() } label: {
                     Image(systemName: "checkmark")
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.system(size: 11, weight: .bold))
                         .foregroundStyle(.green)
-                        .frame(width: 30, height: 30)
+                        .frame(width: 26, height: 26)
                         .background(Color.green.opacity(0.12), in: Circle())
                 }
                 .buttonStyle(.plain)
@@ -203,25 +203,25 @@ struct MemoryProposalRow: View {
     let proposal: MemoryProposal
 
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
+        HStack(alignment: .top, spacing: 10) {
             Image(systemName: "brain.head.profile")
-                .font(.system(size: 16, weight: .semibold))
+                .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(.purple)
-                .frame(width: 34, height: 34)
+                .frame(width: 28, height: 28)
                 .background(Color.purple.opacity(0.1), in: Circle())
 
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: 2) {
                 Text(proposal.memory.summary)
-                    .font(.subheadline.weight(.medium))
+                    .font(.caption.weight(.medium))
                     .textSelection(.enabled)
                 Text("Remember for later")
-                    .font(.caption)
+                    .font(.caption2)
                     .foregroundStyle(.secondary)
             }
 
             Spacer()
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 9)
     }
 }

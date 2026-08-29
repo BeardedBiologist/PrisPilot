@@ -193,26 +193,26 @@ struct SettingsView: View {
                 AccountManagementView()
                     .environment(authStore)
             } label: {
-                HStack(spacing: 14) {
+                HStack(spacing: 12) {
                     Text(user.initials)
-                        .font(.title3.weight(.semibold))
+                        .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.white)
-                        .frame(width: 56, height: 56)
+                        .frame(width: 42, height: 42)
                         .background(Color.blue, in: Circle())
-                    VStack(alignment: .leading, spacing: 3) {
+                    VStack(alignment: .leading, spacing: 2) {
                         Text(user.displayName ?? "Apple Account")
-                            .font(.headline)
+                            .font(.subheadline.weight(.semibold))
                             .foregroundStyle(.primary)
                         if let email = user.email {
                             Text(email)
-                                .font(.subheadline)
+                                .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
                     }
                 }
-                .padding(16)
-                .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                .shadow(color: .black.opacity(0.05), radius: 4, y: 2)
+                .padding(12)
+                .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .shadow(color: .black.opacity(0.04), radius: 3, y: 1)
             }
             .buttonStyle(.plain)
         }

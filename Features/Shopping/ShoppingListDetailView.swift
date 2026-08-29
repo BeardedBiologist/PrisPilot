@@ -70,6 +70,7 @@ struct ShoppingListDetailView: View {
                     storeGroupedSections()
                     needsPriceSection()
                     completedSection()
+                    archiveSection(current)
                 }
             }
         }
@@ -207,12 +208,12 @@ struct ShoppingListDetailView: View {
 
             // Running total
             if hasAnyPrices {
-                VStack(spacing: 10) {
+                VStack(spacing: 8) {
                     HStack(alignment: .lastTextBaseline) {
                         if actualSpend > 0 {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text("kr \(formatDecimal(actualSpend))")
-                                    .font(.system(size: 32, weight: .bold, design: .rounded))
+                                    .font(.title2.weight(.bold))
                                     .contentTransition(.numericText())
                                     .animation(.snappy, value: actualSpend)
                                 Text("spent so far")
@@ -226,7 +227,7 @@ struct ShoppingListDetailView: View {
                         if estimatedRemaining > 0 {
                             VStack(alignment: .trailing, spacing: 2) {
                                 Text("≈ kr \(formatDecimal(estimatedRemaining))")
-                                    .font(.title3.weight(.semibold))
+                                    .font(.callout.weight(.semibold))
                                     .foregroundStyle(.secondary)
                                     .contentTransition(.numericText())
                                     .animation(.snappy, value: estimatedRemaining)
@@ -238,7 +239,7 @@ struct ShoppingListDetailView: View {
                             let est = (current.items.compactMap { $0.estimatedPrice }).reduce(0, +)
                             VStack(alignment: .trailing, spacing: 2) {
                                 Text("≈ kr \(formatDecimal(est))")
-                                    .font(.system(size: 32, weight: .bold, design: .rounded))
+                                    .font(.title2.weight(.bold))
                                     .contentTransition(.numericText())
                                     .animation(.snappy, value: est)
                                 Text("estimated total")
@@ -258,7 +259,7 @@ struct ShoppingListDetailView: View {
 
             if allDone {
                 Label("All done! Great trip.", systemImage: "checkmark.circle.fill")
-                    .font(.subheadline)
+                    .font(.caption)
                     .foregroundStyle(.green)
             }
         }
@@ -429,6 +430,22 @@ struct ShoppingListDetailView: View {
         }
     }
 
+    // MARK: Archive Section
+
+    @ViewBuilder
+    private func archiveSection(_ current: ShoppingList) -> some View {
+        if current.status != .archived {
+            Section {
+                Button(role: .destructive) {
+                    store.archiveShoppingList(listID)
+                } label: {
+                    Label("Archive List", systemImage: "archivebox")
+                        .font(.callout)
+                }
+            }
+        }
+    }
+
     private func completedItemRow(_ item: ShoppingListItem) -> some View {
         ShoppingItemRow(item: item)
             .contentShape(Rectangle())
@@ -532,18 +549,18 @@ struct ShoppingItemRow: View {
     let item: ShoppingListItem
 
     var body: some View {
-        HStack(spacing: 14) {
+        HStack(spacing: 10) {
             Image(systemName: item.isCompleted ? "checkmark.circle.fill" : "circle")
                 .foregroundStyle(item.isCompleted ? .green : Color(.systemGray3))
-                .font(.title2)
+                .font(.body)
                 .contentTransition(.symbolEffect(.replace))
                 .symbolEffect(.bounce, value: item.isCompleted)
                 .symbolEffectsRemoved(reduceMotion)
                 .animation(.snappy, value: item.isCompleted)
 
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: 2) {
                 Text(item.productName)
-                    .font(.body)
+                    .font(.callout)
                     .strikethrough(item.isCompleted)
                     .foregroundStyle(item.isCompleted ? .secondary : .primary)
 
@@ -587,7 +604,7 @@ struct ShoppingItemRow: View {
                     .animation(.snappy, value: estimated)
             }
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, 2)
         .contentShape(Rectangle())
     }
 }
@@ -602,10 +619,10 @@ private struct NeedsPriceItemRow: View {
     let onScanBarcode: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 6) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(item.productName)
-                    .font(.body)
+                    .font(.callout)
                 Text(item.requestedQuantity)
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -637,7 +654,7 @@ private struct NeedsPriceItemRow: View {
                 .accessibilityLabel("Scan barcode")
             }
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, 2)
     }
 }
 

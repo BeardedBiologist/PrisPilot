@@ -102,7 +102,7 @@ struct StoreDetailView: View {
     private func statPair(value: String, label: String) -> some View {
         VStack(alignment: .leading, spacing: 1) {
             Text(value)
-                .font(.title2.weight(.semibold))
+                .font(.subheadline.weight(.semibold))
                 .contentTransition(.numericText())
             Text(label)
                 .font(.caption)
