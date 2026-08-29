@@ -154,7 +154,7 @@ class AppStore {
         switch tag.actionType {
         case .createPriceObservation, .addShoppingListItem, .createShoppingList,
              .createStore, .createMemory, .createProduct, .createRecipe,
-             .addRecipeToShoppingList:
+             .addRecipeToShoppingList, .createMatkasseBox, .addMatkasseMeal:
             return true
         default:
             return false
@@ -211,6 +211,18 @@ class AppStore {
             let before = recipes.count
             recipes.removeAll { ids.contains($0.id) }
             didUndo = recipes.count != before
+
+        case .createMatkasseBox:
+            let before = matkasseBoxes.count
+            matkasseBoxes.removeAll { ids.contains($0.id) }
+            didUndo = matkasseBoxes.count != before
+
+        case .addMatkasseMeal:
+            for boxIndex in matkasseBoxes.indices {
+                let before = matkasseBoxes[boxIndex].includedMeals.count
+                matkasseBoxes[boxIndex].includedMeals.removeAll { ids.contains($0.id) }
+                didUndo = didUndo || matkasseBoxes[boxIndex].includedMeals.count != before
+            }
 
         default:
             break
@@ -440,6 +452,16 @@ class AppStore {
             if let amount = Decimal(string: value.filter { $0.isNumber || $0 == "." || $0 == "," }.replacingOccurrences(of: ",", with: ".")) {
                 settings.minimumAdditionalStoreSavings = amount
             }
+        case "travelCostPerKm":
+            if let amount = Decimal(string: value.filter { $0.isNumber || $0 == "." || $0 == "," }.replacingOccurrences(of: ",", with: ".")) {
+                settings.travelCostPerKilometer = amount
+            }
+        case "fixedStoreVisitCost":
+            if let amount = Decimal(string: value.filter { $0.isNumber || $0 == "." || $0 == "," }.replacingOccurrences(of: ",", with: ".")) {
+                settings.fixedStoreVisitCost = amount
+            }
+        case "communityPricingEnabled":
+            settings.participatesInCommunityPricing = ["true", "1", "yes", "on"].contains(value.lowercased())
         default:
             break
         }
@@ -530,15 +552,22 @@ class AppStore {
             return (.products, .edit)
         case .deleteProduct, .mergeProducts:
             return (.products, .delete)
+        case .addProductAlias, .setProductBarcode:
+            return (.products, .edit)
+        case .removeProductAlias:
+            return (.products, .edit)
         case .createPriceObservation:
             return (.prices, .create)
-        case .updatePriceObservation:
+        case .updatePriceObservation, .confirmPriceObservation:
             return (.prices, .edit)
         case .deletePriceObservation:
             return (.prices, .delete)
+        case .flagCommunityPrice:
+            return (.prices, .edit)
         case .createShoppingList, .addShoppingListItem, .addRecipeToShoppingList:
             return (.shoppingLists, .create)
-        case .updateShoppingList, .updateShoppingListItem, .completeShoppingListItem:
+        case .updateShoppingList, .updateShoppingListItem, .completeShoppingListItem,
+             .setShoppingListStatus, .optimizeShoppingList, .moveShoppingListItem, .substituteShoppingListItem:
             return (.shoppingLists, .edit)
         case .deleteShoppingList, .removeShoppingListItem:
             return (.shoppingLists, .delete)
@@ -548,6 +577,12 @@ class AppStore {
             return (.recipes, .edit)
         case .deleteRecipe:
             return (.recipes, .delete)
+        case .setMealPlanSlot, .createMatkasseBox, .addMatkasseMeal, .buildShoppingListFromMealPlan:
+            return (.meals, .create)
+        case .updateMatkasseBox:
+            return (.meals, .edit)
+        case .removeMealPlanSlot, .deleteMatkasseBox, .removeMatkasseMeal:
+            return (.meals, .delete)
         case .createStore:
             return (.settings, .create)
         case .updateStore, .enableStore, .disableStore, .updateShoppingPreferences, .changeAppSetting:
@@ -646,6 +681,40 @@ class AppStore {
             shoppingLists[listIdx].items.remove(at: itemIdx)
             return [id]
 
+        case .setShoppingListStatus(let listName, let statusRaw):
+            guard let idx = shoppingListIndex(matching: listName) else { return [] }
+            let listID = shoppingLists[idx].id
+            switch statusRaw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+            case "active": activateList(listID)
+            case "completed", "done": completeShoppingList(listID)
+            case "archived": archiveShoppingList(listID)
+            default: return []
+            }
+            return [listID]
+
+        case .optimizeShoppingList(let listName):
+            guard let idx = shoppingListIndex(matching: listName) else { return [] }
+            let listID = shoppingLists[idx].id
+            optimizeShoppingList(listID)
+            return [listID]
+
+        case .moveShoppingListItem(let listName, let productName, let storeBranchName):
+            guard let listIdx = shoppingListIndex(matching: listName),
+                  let itemIdx = shoppingListItemIndex(in: listIdx, matchingProduct: productName),
+                  let branch = branches.first(where: { branchMatches($0, name: storeBranchName) }) else { return [] }
+            let itemID = shoppingLists[listIdx].items[itemIdx].id
+            let listID = shoppingLists[listIdx].id
+            moveItem(itemID, in: listID, toBranchID: branch.id)
+            return [itemID]
+
+        case .substituteShoppingListItem(let listName, let productName, let newProductName):
+            guard let listIdx = shoppingListIndex(matching: listName),
+                  let itemIdx = shoppingListItemIndex(in: listIdx, matchingProduct: productName) else { return [] }
+            let itemID = shoppingLists[listIdx].items[itemIdx].id
+            let listID = shoppingLists[listIdx].id
+            useSubstitute(itemID, in: listID, newProductName: newProductName)
+            return [itemID]
+
         case .addRecipeToShoppingList(let recipeName, let listName):
             let trimmedRecipeName = recipeName.trimmingCharacters(in: .whitespacesAndNewlines)
             guard let recipe = recipes.first(where: { $0.title.lowercased() == trimmedRecipeName.lowercased() }) else { return [] }
@@ -731,10 +800,138 @@ class AppStore {
             priceObservations.remove(at: idx)
             return [id]
 
+        case .confirmPriceObservation(let productName, let storeBranchName):
+            guard let idx = mostRecentPersonalObservationIndex(productName: productName, storeBranchName: storeBranchName) else { return [] }
+            let obsID = priceObservations[idx].id
+            confirmPriceObservation(obsID)
+            return [obsID]
+
+        case .flagCommunityPrice(let productName, let storeBranchName):
+            let target = productName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            var candidates = priceObservations.filter { $0.productName.lowercased() == target && $0.source == .community }
+            if let storeBranchName, !storeBranchName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                let storeTarget = storeBranchName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                let narrowed = candidates.filter { $0.storeBranchName.lowercased().contains(storeTarget) }
+                if !narrowed.isEmpty { candidates = narrowed }
+            }
+            guard let obs = candidates.max(by: { $0.observedDate < $1.observedDate }) else { return [] }
+            flagCommunityPriceObservation(obs.id)
+            return [obs.id]
+
+        case .addProductAlias(let productName, let alias):
+            guard let idx = productIndex(matching: productName) else { return [] }
+            let id = products[idx].id
+            addProductAlias(id, alias: alias)
+            return [id]
+
+        case .removeProductAlias(let productName, let alias):
+            guard let idx = productIndex(matching: productName) else { return [] }
+            let id = products[idx].id
+            removeProductAlias(id, alias: alias)
+            return [id]
+
+        case .setProductBarcode(let productName, let barcode):
+            guard let idx = productIndex(matching: productName) else { return [] }
+            let id = products[idx].id
+            setProductBarcode(id, barcode: barcode)
+            return [id]
+
         case .createRecipe(let title, let servings):
             let recipe = Recipe(title: title, servings: servings)
             recipes.append(recipe)
             return [recipe.id]
+
+        case .updateRecipe(let existingTitle, let newTitle, let description, let servings):
+            guard let idx = recipeIndex(matching: existingTitle) else { return [] }
+            if let newTitle, !newTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                recipes[idx].title = newTitle
+            }
+            if let description { recipes[idx].description = description }
+            if let servings { recipes[idx].servings = servings }
+            return [recipes[idx].id]
+
+        case .deleteRecipe(let title):
+            guard let idx = recipeIndex(matching: title) else { return [] }
+            let id = recipes[idx].id
+            recipes.remove(at: idx)
+            return [id]
+
+        case .setMealPlanSlot(let date, let mealTypeRaw, let recipeTitle, let freeformText, let isEatingOut, let isLeftover):
+            let content: MealSlotContent?
+            if let recipeTitle, let recipe = recipes.first(where: { $0.title.lowercased() == recipeTitle.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }) {
+                content = .recipe(recipeID: recipe.id, title: recipe.title)
+            } else if isEatingOut {
+                content = .eatingOut(note: freeformText)
+            } else if let freeformText, !freeformText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                content = .freeform(freeformText)
+            } else {
+                content = nil
+            }
+            guard let content else { return [] }
+            setMealPlanSlot(date: date, mealType: mealType(fromRawValue: mealTypeRaw), content: content, isLeftover: isLeftover)
+            return []
+
+        case .removeMealPlanSlot(let date, let mealTypeRaw):
+            clearMealPlanSlot(date: date, mealType: mealType(fromRawValue: mealTypeRaw))
+            return []
+
+        case .buildShoppingListFromMealPlan(let weekStart, let oneListPerWeek):
+            let resolvedWeekStart = weekStartDate(for: weekStart ?? Date())
+            let days = (0..<7).compactMap { Calendar.mealPlanCalendar.date(byAdding: .day, value: $0, to: resolvedWeekStart) }
+            let slots = mealPlanSlots(on: days)
+            let mode: ShoppingListGenerationMode = oneListPerWeek ? .perWeek : .singleList
+            return generateShoppingList(
+                fromSlots: slots,
+                mode: mode,
+                listNamePrefix: "Week of \(resolvedWeekStart.formatted(date: .abbreviated, time: .omitted))"
+            )
+
+        case .createMatkasseBox(let provider, let deliveryWeek, let numberOfMeals, let servingsPerMeal, let price, let notes):
+            let box = createMatkasseBox(
+                provider: provider,
+                deliveryWeekStartDate: weekStartDate(for: deliveryWeek ?? Date()),
+                numberOfMeals: numberOfMeals ?? 4,
+                servingsPerMeal: servingsPerMeal ?? 2,
+                price: price,
+                notes: notes
+            )
+            return [box.id]
+
+        case .updateMatkasseBox(let existingProvider, let newProvider, let deliveryWeek, let numberOfMeals, let servingsPerMeal, let price, let notes):
+            let target = existingProvider.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            guard let box = matkasseBoxes.first(where: { $0.provider.lowercased() == target }) else { return [] }
+            updateMatkasseBox(
+                box.id,
+                provider: newProvider,
+                deliveryWeekStartDate: deliveryWeek.map { weekStartDate(for: $0) },
+                numberOfMeals: numberOfMeals,
+                servingsPerMeal: servingsPerMeal,
+                price: price,
+                notes: notes
+            )
+            return [box.id]
+
+        case .deleteMatkasseBox(let provider):
+            let target = provider.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            guard let box = matkasseBoxes.first(where: { $0.provider.lowercased() == target }) else { return [] }
+            let id = box.id
+            deleteMatkasseBox(id)
+            return [id]
+
+        case .addMatkasseMeal(let boxProvider, let mealTitle):
+            let trimmedProvider = boxProvider.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            guard let box = matkasseBoxes.first(where: { $0.provider.lowercased() == trimmedProvider }) else { return [] }
+            addMatkasseMeal(to: box.id, title: mealTitle)
+            let addedMealID = matkasseBoxes.first(where: { $0.id == box.id })?.includedMeals.last?.id
+            return addedMealID.map { [$0] } ?? []
+
+        case .removeMatkasseMeal(let boxProvider, let mealTitle):
+            let trimmedProvider = boxProvider.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            let trimmedTitle = mealTitle.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            guard let box = matkasseBoxes.first(where: { $0.provider.lowercased() == trimmedProvider }),
+                  let meal = box.includedMeals.first(where: { $0.title.lowercased() == trimmedTitle }) else { return [] }
+            removeMatkasseMeal(meal.id, from: box.id)
+            return [meal.id]
 
         case .changeAppSetting(let key, let value):
             applySettingChange(key: key, value: value)
@@ -763,6 +960,27 @@ class AppStore {
     private func productIndex(matching name: String) -> Int? {
         let target = name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         return products.firstIndex { $0.name.lowercased() == target }
+    }
+
+    /// Case-insensitive exact-title lookup for AI actions targeting an
+    /// *existing* recipe (update/delete) — same non-creating reasoning as
+    /// `productIndex(matching:)`.
+    private func recipeIndex(matching title: String) -> Int? {
+        let target = title.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return recipes.firstIndex { $0.title.lowercased() == target }
+    }
+
+    /// Maps a chat-provided meal-type string ("Breakfast", "dinner", ...)
+    /// to `MealType`, falling back to `.custom` for anything that isn't
+    /// one of the three defaults — lets a user say "add a snack Tuesday"
+    /// without the AI action failing outright.
+    private func mealType(fromRawValue raw: String) -> MealType {
+        switch raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "breakfast": return .breakfast
+        case "lunch": return .lunch
+        case "dinner": return .dinner
+        default: return .custom(raw.trimmingCharacters(in: .whitespacesAndNewlines))
+        }
     }
 
     /// Most recently observed non-community price for a product, optionally
@@ -1529,6 +1747,157 @@ class AppStore {
             .compactMap { mealPlan(forWeekStartDate: $0) }
             .flatMap { $0.slots }
             .filter { dayKeys.contains(Calendar.mealPlanCalendar.startOfDay(for: $0.date)) }
+    }
+
+    // MARK: - Meal Planning: Shopping List Generation
+
+    enum ShoppingListGenerationMode {
+        /// Every planned recipe's ingredients merged into one list.
+        case singleList
+        /// One list per week the selected slots span — matches how the
+        /// product plan frames "one weekly list or lists per shopping trip"
+        /// for ranges wider than a single week (fortnight/month).
+        case perWeek
+    }
+
+    /// Builds shopping list(s) from planned *recipe* slots only — matkasse,
+    /// freeform, and eating-out slots don't contribute ingredients (matkasse
+    /// is deliberately excluded per the product plan's confirmed decision:
+    /// its ingredients are already being delivered). Duplicate ingredients
+    /// across recipes are merged via `looselyMatchesProductName`, with
+    /// same-unit-family quantities summed through the Phase 6 unit-price
+    /// helpers rather than listed as separate rows.
+    @discardableResult
+    func generateShoppingList(
+        fromSlots slots: [MealPlanSlot],
+        mode: ShoppingListGenerationMode,
+        excludingIngredientNames excludedNames: Set<String> = [],
+        listNamePrefix: String
+    ) -> [UUID] {
+        let recipeSlots: [(slot: MealPlanSlot, recipe: Recipe)] = slots.compactMap { slot in
+            guard case .recipe(let recipeID, _) = slot.content,
+                  let recipe = recipes.first(where: { $0.id == recipeID }) else { return nil }
+            return (slot, recipe)
+        }
+        guard !recipeSlots.isEmpty else { return [] }
+
+        switch mode {
+        case .singleList:
+            let list = buildMergedShoppingList(
+                named: "\(listNamePrefix) Shopping List",
+                from: recipeSlots.map(\.recipe),
+                excluding: excludedNames
+            )
+            return [list.id]
+
+        case .perWeek:
+            let grouped = Dictionary(grouping: recipeSlots) { weekStartDate(for: $0.slot.date) }
+            return grouped.keys.sorted().map { weekStart in
+                let weekRecipes = (grouped[weekStart] ?? []).map(\.recipe)
+                let list = buildMergedShoppingList(
+                    named: "Week of \(weekStart.formatted(date: .abbreviated, time: .omitted))",
+                    from: weekRecipes,
+                    excluding: excludedNames
+                )
+                return list.id
+            }
+        }
+    }
+
+    private func buildMergedShoppingList(named name: String, from recipesToMerge: [Recipe], excluding excludedNames: Set<String>) -> ShoppingList {
+        var merged: [(name: String, quantities: [(Double, MeasurementUnit)])] = []
+
+        for recipe in recipesToMerge {
+            for ingredient in recipe.ingredients {
+                guard !excludedNames.contains(where: { $0.looselyMatchesProductName(ingredient.productName) }) else { continue }
+                if let idx = merged.firstIndex(where: { $0.name.looselyMatchesProductName(ingredient.productName) }) {
+                    merged[idx].quantities.append((ingredient.quantity, ingredient.unit))
+                } else {
+                    merged.append((ingredient.productName, [(ingredient.quantity, ingredient.unit)]))
+                }
+            }
+        }
+
+        var list = ShoppingList(name: name)
+        list.items = merged.map { entry in
+            ShoppingListItem(listID: list.id, productName: entry.name, requestedQuantity: mergedQuantityText(entry.quantities))
+        }
+        shoppingLists.append(list)
+        return list
+    }
+
+    /// Sums quantities that share a unit family (grams+kilograms → kg,
+    /// millilitres+litres → l) via the Phase 6 unit-normalization helpers;
+    /// pieces and packs don't cross-merge with each other or with
+    /// weight/volume, since "3 pieces + 2 packs" has no single sane sum.
+    private func mergedQuantityText(_ quantities: [(Double, MeasurementUnit)]) -> String {
+        var byNormalizedUnit: [MeasurementUnit: Double] = [:]
+        for (quantity, unit) in quantities {
+            let normalizedUnit = unit.normalizedComparisonUnit
+            let baseQuantity = quantity * unit.baseUnitsPerUnit
+            byNormalizedUnit[normalizedUnit, default: 0] += baseQuantity / normalizedUnit.baseUnitsPerUnit
+        }
+        return byNormalizedUnit
+            .map { unit, quantity in "\(quantity.formatted()) \(unit.rawValue)" }
+            .sorted()
+            .joined(separator: " + ")
+    }
+
+    // MARK: - Matkasse
+
+    @discardableResult
+    func createMatkasseBox(provider: String, deliveryWeekStartDate: Date, numberOfMeals: Int, servingsPerMeal: Int, price: Decimal?, notes: String?) -> MatkasseBox {
+        let box = MatkasseBox(
+            provider: provider,
+            deliveryWeekStartDate: deliveryWeekStartDate,
+            numberOfMeals: numberOfMeals,
+            servingsPerMeal: servingsPerMeal,
+            price: price,
+            notes: notes
+        )
+        matkasseBoxes.append(box)
+        persistNow()
+        return box
+    }
+
+    func deleteMatkasseBox(_ boxID: UUID) {
+        matkasseBoxes.removeAll { $0.id == boxID }
+        persistNow()
+    }
+
+    func updateMatkasseBox(
+        _ boxID: UUID,
+        provider: String? = nil,
+        deliveryWeekStartDate: Date? = nil,
+        numberOfMeals: Int? = nil,
+        servingsPerMeal: Int? = nil,
+        price: Decimal? = nil,
+        notes: String? = nil
+    ) {
+        guard let idx = matkasseBoxes.firstIndex(where: { $0.id == boxID }) else { return }
+        if let provider, !provider.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            matkasseBoxes[idx].provider = provider
+        }
+        if let deliveryWeekStartDate { matkasseBoxes[idx].deliveryWeekStartDate = deliveryWeekStartDate }
+        if let numberOfMeals { matkasseBoxes[idx].numberOfMeals = numberOfMeals }
+        if let servingsPerMeal { matkasseBoxes[idx].servingsPerMeal = servingsPerMeal }
+        if let price { matkasseBoxes[idx].price = price }
+        if let notes { matkasseBoxes[idx].notes = notes }
+        persistNow()
+    }
+
+    func addMatkasseMeal(to boxID: UUID, title: String, ingredients: [RecipeIngredient] = []) {
+        guard let idx = matkasseBoxes.firstIndex(where: { $0.id == boxID }) else { return }
+        var meal = MatkasseMeal(title: title)
+        meal.ingredients = ingredients
+        matkasseBoxes[idx].includedMeals.append(meal)
+        persistNow()
+    }
+
+    func removeMatkasseMeal(_ mealID: UUID, from boxID: UUID) {
+        guard let idx = matkasseBoxes.firstIndex(where: { $0.id == boxID }) else { return }
+        matkasseBoxes[idx].includedMeals.removeAll { $0.id == mealID }
+        persistNow()
     }
 
     // MARK: - Seed Data

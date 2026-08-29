@@ -27,6 +27,7 @@ struct MealPlanView: View {
     @State private var viewMode: PlannerViewMode = .list
     @State private var editingTarget: SlotEditTarget?
     @State private var dayForDetail: IdentifiableDate?
+    @State private var showBuildShoppingList = false
 
     private var periodStart: Date {
         switch range {
@@ -105,6 +106,7 @@ struct MealPlanView: View {
             controlsSection
             weekNavigationSection
             weekSummarySection
+            buildShoppingListSection
 
             if usesCalendarLayout {
                 calendarSection
@@ -132,6 +134,33 @@ struct MealPlanView: View {
                 }
             )
             .environment(store)
+        }
+        .sheet(isPresented: $showBuildShoppingList) {
+            BuildShoppingListSheet(slots: visibleSlots, periodLabel: periodRangeText)
+                .environment(store)
+        }
+    }
+
+    private var hasRecipeSlots: Bool {
+        visibleSlots.contains {
+            if case .recipe = $0.content { return true }
+            return false
+        }
+    }
+
+    @ViewBuilder
+    private var buildShoppingListSection: some View {
+        if hasRecipeSlots {
+            Section {
+                Button {
+                    showBuildShoppingList = true
+                } label: {
+                    Label("Build Shopping List", systemImage: "cart.badge.plus")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+            }
+            .listRowBackground(Color.clear)
         }
     }
 
@@ -686,6 +715,104 @@ struct MealSlotEditorSheet: View {
         }
 
         store.setMealPlanSlot(date: date, mealType: mealType, content: content, isLeftover: isLeftover)
+        dismiss()
+    }
+}
+
+// MARK: - Build Shopping List Sheet
+
+struct BuildShoppingListSheet: View {
+    @Environment(AppStore.self) private var store
+    @Environment(\.dismiss) private var dismiss
+
+    let slots: [MealPlanSlot]
+    let periodLabel: String
+
+    @State private var mode: AppStore.ShoppingListGenerationMode = .singleList
+    @State private var excludedNames: Set<String> = []
+
+    private var recipeIngredientNames: [String] {
+        var seen = Set<String>()
+        var names: [String] = []
+        for slot in slots {
+            guard case .recipe(let recipeID, _) = slot.content,
+                  let recipe = store.recipes.first(where: { $0.id == recipeID }) else { continue }
+            for ingredient in recipe.ingredients {
+                let key = ingredient.productName.lowercased()
+                guard !seen.contains(key) else { continue }
+                seen.insert(key)
+                names.append(ingredient.productName)
+            }
+        }
+        return names.sorted()
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    Picker("Grouping", selection: $mode) {
+                        Text("One List").tag(AppStore.ShoppingListGenerationMode.singleList)
+                        Text("One List Per Week").tag(AppStore.ShoppingListGenerationMode.perWeek)
+                    }
+                    .pickerStyle(.segmented)
+                } header: {
+                    Text("List Grouping")
+                } footer: {
+                    Text(mode == .singleList
+                         ? "All planned recipes' ingredients merge into a single list."
+                         : "One list per week your selection spans.")
+                }
+
+                if !recipeIngredientNames.isEmpty {
+                    Section {
+                        ForEach(recipeIngredientNames, id: \.self) { name in
+                            Button {
+                                toggle(name)
+                            } label: {
+                                HStack {
+                                    Text(name)
+                                        .foregroundStyle(.primary)
+                                    Spacer()
+                                    Image(systemName: excludedNames.contains(name) ? "checkmark.circle.fill" : "circle")
+                                        .foregroundStyle(excludedNames.contains(name) ? Color.accentColor : Color(.systemGray3))
+                                }
+                            }
+                        }
+                    } header: {
+                        Text("Already Have")
+                    } footer: {
+                        Text("Checked ingredients are excluded from the generated list.")
+                    }
+                }
+            }
+            .navigationTitle("Build Shopping List")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Generate") { generate() }
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+    }
+
+    private func toggle(_ name: String) {
+        if excludedNames.contains(name) {
+            excludedNames.remove(name)
+        } else {
+            excludedNames.insert(name)
+        }
+    }
+
+    private func generate() {
+        store.generateShoppingList(
+            fromSlots: slots,
+            mode: mode,
+            excludingIngredientNames: excludedNames,
+            listNamePrefix: periodLabel
+        )
         dismiss()
     }
 }

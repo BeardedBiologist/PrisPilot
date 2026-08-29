@@ -397,6 +397,41 @@ final class GeminiAIService: AIService, OnboardingAIService, ReceiptParsingAISer
                 required: ["listName", "productName"]
             ),
             makeFn(
+                name: "setShoppingListStatus",
+                desc: "Change a shopping list's status — start shopping a planned list, mark it completed, or archive it.",
+                props: [
+                    "listName": strProp("Shopping list name"),
+                    "status":   enumProp("New status", ["active", "completed", "archived"])
+                ],
+                required: ["listName", "status"]
+            ),
+            makeFn(
+                name: "optimizeShoppingList",
+                desc: "Re-run store/price optimization for a shopping list, assigning items to the cheapest practical stores.",
+                props: ["listName": strProp("Shopping list name")],
+                required: ["listName"]
+            ),
+            makeFn(
+                name: "moveShoppingListItem",
+                desc: "Manually reassign a shopping list item to a specific store, overriding the optimizer.",
+                props: [
+                    "listName":        strProp("Shopping list name"),
+                    "productName":     strProp("Item's product name"),
+                    "storeBranchName": strProp("Store to move the item to, e.g. 'Kiwi Majorstuen'")
+                ],
+                required: ["listName", "productName", "storeBranchName"]
+            ),
+            makeFn(
+                name: "substituteShoppingListItem",
+                desc: "Replace a shopping list item's product with a substitute — clears its price/store assignment since the substitute needs its own pricing.",
+                props: [
+                    "listName":       strProp("Shopping list name"),
+                    "productName":    strProp("Existing item's product name"),
+                    "newProductName": strProp("Substitute product name")
+                ],
+                required: ["listName", "productName", "newProductName"]
+            ),
+            makeFn(
                 name: "addRecipeToShoppingList",
                 desc: "Add all ingredients from a saved recipe to a shopping list.",
                 props: [
@@ -404,6 +439,105 @@ final class GeminiAIService: AIService, OnboardingAIService, ReceiptParsingAISer
                     "listName":   strProp("Shopping list name to add ingredients to. Default 'Weekly Shop' if unspecified.")
                 ],
                 required: ["recipeName", "listName"]
+            ),
+            makeFn(
+                name: "updateRecipe",
+                desc: "Edit an existing recipe's title, description, or servings.",
+                props: [
+                    "existingTitle": strProp("Existing recipe title"),
+                    "newTitle":      strProp("New title, if renaming"),
+                    "description":   strProp("New description, if changing it"),
+                    "servings":      numProp("New servings count, if changing it")
+                ],
+                required: ["existingTitle"]
+            ),
+            makeFn(
+                name: "deleteRecipe",
+                desc: "Delete a saved recipe. Only use when the user clearly asks to remove it.",
+                props: ["title": strProp("Recipe title to delete")],
+                required: ["title"]
+            ),
+            makeFn(
+                name: "setMealPlanSlot",
+                desc: "Plan a meal for a specific date and meal type — a saved recipe, a freeform meal that isn't a full recipe, or eating out. Overwrites whatever was already planned for that date+mealType.",
+                props: [
+                    "date":         strProp("Date in YYYY-MM-DD format"),
+                    "mealType":     enumProp("Meal type", ["Breakfast", "Lunch", "Dinner"]),
+                    "recipeTitle":  strProp("Existing saved recipe's title, if planning a recipe"),
+                    "freeformText": strProp("Freeform meal description, if not a saved recipe (or a note for eating out)"),
+                    "isEatingOut":  boolProp("True if this is an eating-out/takeaway meal rather than something cooked"),
+                    "isLeftover":   boolProp("True if this reuses a previous meal's cooking rather than a new dish")
+                ],
+                required: ["date", "mealType"]
+            ),
+            makeFn(
+                name: "removeMealPlanSlot",
+                desc: "Clear a planned meal for a specific date and meal type.",
+                props: [
+                    "date":     strProp("Date in YYYY-MM-DD format"),
+                    "mealType": enumProp("Meal type", ["Breakfast", "Lunch", "Dinner"])
+                ],
+                required: ["date", "mealType"]
+            ),
+            makeFn(
+                name: "buildShoppingListFromMealPlan",
+                desc: "Generate shopping list(s) from planned recipe meals for a week — matkasse/freeform/eating-out slots are skipped since they don't need groceries.",
+                props: [
+                    "weekStartDate":  strProp("Any date within the target week, in YYYY-MM-DD format. Defaults to the current week if omitted."),
+                    "oneListPerWeek": boolProp("True to create one list per week (only relevant for multi-week ranges elsewhere in the app); false merges everything into a single list. Defaults to false.")
+                ],
+                required: []
+            ),
+            makeFn(
+                name: "createMatkasseBox",
+                desc: "Add a matkasse / meal-kit delivery box for a delivery week. The provider name is whatever the user calls it — never assume a specific brand.",
+                props: [
+                    "provider":         strProp("Provider name as the user describes it, e.g. 'Adams Matkasse', 'our meal kit'"),
+                    "deliveryWeek":     strProp("Delivery week date in YYYY-MM-DD format (any day in that week)"),
+                    "numberOfMeals":    numProp("Number of meals included, if mentioned"),
+                    "servingsPerMeal":  numProp("Servings per meal, if mentioned"),
+                    "price":            numProp("Box price in NOK, if mentioned"),
+                    "notes":            strProp("Optional notes")
+                ],
+                required: ["provider"]
+            ),
+            makeFn(
+                name: "addMatkasseMeal",
+                desc: "Add a meal to an existing matkasse box.",
+                props: [
+                    "boxProvider": strProp("Existing matkasse box's provider name"),
+                    "mealTitle":   strProp("Meal title to add")
+                ],
+                required: ["boxProvider", "mealTitle"]
+            ),
+            makeFn(
+                name: "updateMatkasseBox",
+                desc: "Edit an existing matkasse box's details.",
+                props: [
+                    "existingProvider": strProp("Existing box's provider name"),
+                    "newProvider":      strProp("New provider name, if changing it"),
+                    "deliveryWeek":     strProp("New delivery week date in YYYY-MM-DD format, if changing it"),
+                    "numberOfMeals":    numProp("New number of meals, if changing it"),
+                    "servingsPerMeal":  numProp("New servings per meal, if changing it"),
+                    "price":            numProp("New price in NOK, if changing it"),
+                    "notes":            strProp("New notes, if changing them")
+                ],
+                required: ["existingProvider"]
+            ),
+            makeFn(
+                name: "deleteMatkasseBox",
+                desc: "Delete a matkasse box entirely, including its meals. Only use when the user clearly asks to remove it.",
+                props: ["provider": strProp("Box's provider name to delete")],
+                required: ["provider"]
+            ),
+            makeFn(
+                name: "removeMatkasseMeal",
+                desc: "Remove a meal from a matkasse box.",
+                props: [
+                    "boxProvider": strProp("Existing matkasse box's provider name"),
+                    "mealTitle":   strProp("Meal title to remove")
+                ],
+                required: ["boxProvider", "mealTitle"]
             ),
             makeFn(
                 name: "createMemory",
@@ -472,6 +606,63 @@ final class GeminiAIService: AIService, OnboardingAIService, ReceiptParsingAISer
                     "storeBranchName": strProp("Store to narrow down which price, if the product is priced at multiple stores")
                 ],
                 required: ["productName"]
+            ),
+            makeFn(
+                name: "confirmPriceObservation",
+                desc: "Re-confirm that the most recently recorded price for a product is still accurate — records a fresh observation dated today with the same price.",
+                props: [
+                    "productName":     strProp("Product name"),
+                    "storeBranchName": strProp("Store to narrow down which price, if the product is priced at multiple stores")
+                ],
+                required: ["productName"]
+            ),
+            makeFn(
+                name: "flagCommunityPrice",
+                desc: "Flag a community-sourced price as suspicious or incorrect.",
+                props: [
+                    "productName":     strProp("Product name"),
+                    "storeBranchName": strProp("Store to narrow down which price, if the product is priced at multiple stores")
+                ],
+                required: ["productName"]
+            ),
+            makeFn(
+                name: "addProductAlias",
+                desc: "Add an alternate name (alias) a product is also known by, e.g. a store-specific name or receipt spelling.",
+                props: [
+                    "productName": strProp("Existing product name"),
+                    "alias":       strProp("Alternate name to add")
+                ],
+                required: ["productName", "alias"]
+            ),
+            makeFn(
+                name: "removeProductAlias",
+                desc: "Remove a previously saved alias from a product.",
+                props: [
+                    "productName": strProp("Existing product name"),
+                    "alias":       strProp("Alias to remove")
+                ],
+                required: ["productName", "alias"]
+            ),
+            makeFn(
+                name: "setProductBarcode",
+                desc: "Set or update a product's barcode.",
+                props: [
+                    "productName": strProp("Existing product name"),
+                    "barcode":     strProp("Barcode value")
+                ],
+                required: ["productName", "barcode"]
+            ),
+            makeFn(
+                name: "changeAppSetting",
+                desc: "Change a shopping/optimization app setting.",
+                props: [
+                    "key": enumProp("Setting to change", [
+                        "cheapestDefinition", "maxStoreCount", "minimumSavings",
+                        "travelCostPerKm", "fixedStoreVisitCost", "communityPricingEnabled"
+                    ]),
+                    "value": strProp("New value: for cheapestDefinition use one of \(CheapestDefinition.allCases.map(\.rawValue).joined(separator: ", ")); for maxStoreCount an integer; for minimumSavings/travelCostPerKm/fixedStoreVisitCost a NOK number; for communityPricingEnabled 'true' or 'false'")
+                ],
+                required: ["key", "value"]
             ),
             makeFn(
                 name: "createStore",
@@ -679,6 +870,47 @@ final class GeminiAIService: AIService, OnboardingAIService, ReceiptParsingAISer
                 riskLevel: .medium
             ))
 
+        case "setShoppingListStatus":
+            guard let list = args["listName"]?.stringValue,
+                  let status = args["status"]?.stringValue else { return .none }
+            return .action(ProposedAction(
+                type: .setShoppingListStatus,
+                summary: "Set \(list) to \(status)",
+                payload: .setShoppingListStatus(listName: list, status: status),
+                riskLevel: .low
+            ))
+
+        case "optimizeShoppingList":
+            guard let list = args["listName"]?.stringValue else { return .none }
+            return .action(ProposedAction(
+                type: .optimizeShoppingList,
+                summary: "Optimize list: \(list)",
+                payload: .optimizeShoppingList(listName: list),
+                riskLevel: .low
+            ))
+
+        case "moveShoppingListItem":
+            guard let list = args["listName"]?.stringValue,
+                  let product = args["productName"]?.stringValue,
+                  let storeBranch = args["storeBranchName"]?.stringValue else { return .none }
+            return .action(ProposedAction(
+                type: .moveShoppingListItem,
+                summary: "Move \(product) to \(storeBranch)",
+                payload: .moveShoppingListItem(listName: list, productName: product, storeBranchName: storeBranch),
+                riskLevel: .low
+            ))
+
+        case "substituteShoppingListItem":
+            guard let list = args["listName"]?.stringValue,
+                  let product = args["productName"]?.stringValue,
+                  let newProduct = args["newProductName"]?.stringValue else { return .none }
+            return .action(ProposedAction(
+                type: .substituteShoppingListItem,
+                summary: "Substitute \(product) with \(newProduct) on \(list)",
+                payload: .substituteShoppingListItem(listName: list, productName: product, newProductName: newProduct),
+                riskLevel: .low
+            ))
+
         case "addRecipeToShoppingList":
             guard let recipeName = args["recipeName"]?.stringValue,
                   let listName = args["listName"]?.stringValue else { return .none }
@@ -687,6 +919,138 @@ final class GeminiAIService: AIService, OnboardingAIService, ReceiptParsingAISer
                 summary: "Add \(recipeName) ingredients to \(listName)",
                 payload: .addRecipeToShoppingList(recipeName: recipeName, listName: listName),
                 riskLevel: .low
+            ))
+
+        case "updateRecipe":
+            guard let existingTitle = args["existingTitle"]?.stringValue else { return .none }
+            let newTitle = args["newTitle"]?.stringValue
+            return .action(ProposedAction(
+                type: .updateRecipe,
+                summary: newTitle.map { "Rename recipe \(existingTitle) to \($0)" } ?? "Update recipe: \(existingTitle)",
+                payload: .updateRecipe(
+                    existingTitle: existingTitle,
+                    newTitle: newTitle,
+                    description: args["description"]?.stringValue,
+                    servings: args["servings"]?.doubleValue.map { Int($0) }
+                ),
+                riskLevel: .low
+            ))
+
+        case "deleteRecipe":
+            guard let title = args["title"]?.stringValue else { return .none }
+            return .action(ProposedAction(
+                type: .deleteRecipe,
+                summary: "Delete recipe: \(title)",
+                payload: .deleteRecipe(title: title),
+                riskLevel: .high
+            ))
+
+        case "setMealPlanSlot":
+            guard let dateString = args["date"]?.stringValue,
+                  let date = Self.dateFormatter.date(from: dateString),
+                  let mealType = args["mealType"]?.stringValue else { return .none }
+            let recipeTitle = args["recipeTitle"]?.stringValue
+            let freeformText = args["freeformText"]?.stringValue
+            let isEatingOut = args["isEatingOut"]?.boolValue ?? false
+            let what = recipeTitle ?? (isEatingOut ? "eating out" : (freeformText ?? "a meal"))
+            return .action(ProposedAction(
+                type: .setMealPlanSlot,
+                summary: "Plan \(mealType) on \(dateString): \(what)",
+                payload: .setMealPlanSlot(
+                    date: date,
+                    mealType: mealType,
+                    recipeTitle: recipeTitle,
+                    freeformText: freeformText,
+                    isEatingOut: isEatingOut,
+                    isLeftover: args["isLeftover"]?.boolValue ?? false
+                ),
+                riskLevel: .low
+            ))
+
+        case "removeMealPlanSlot":
+            guard let dateString = args["date"]?.stringValue,
+                  let date = Self.dateFormatter.date(from: dateString),
+                  let mealType = args["mealType"]?.stringValue else { return .none }
+            return .action(ProposedAction(
+                type: .removeMealPlanSlot,
+                summary: "Remove planned \(mealType) on \(dateString)",
+                payload: .removeMealPlanSlot(date: date, mealType: mealType),
+                riskLevel: .medium
+            ))
+
+        case "buildShoppingListFromMealPlan":
+            let weekStartDate = args["weekStartDate"]?.stringValue.flatMap { Self.dateFormatter.date(from: $0) }
+            let oneListPerWeek = args["oneListPerWeek"]?.boolValue ?? false
+            return .action(ProposedAction(
+                type: .buildShoppingListFromMealPlan,
+                summary: "Build shopping list from meal plan",
+                payload: .buildShoppingListFromMealPlan(weekStartDate: weekStartDate, oneListPerWeek: oneListPerWeek),
+                riskLevel: .low
+            ))
+
+        case "createMatkasseBox":
+            guard let provider = args["provider"]?.stringValue else { return .none }
+            let deliveryWeek = args["deliveryWeek"]?.stringValue.flatMap { Self.dateFormatter.date(from: $0) }
+            return .action(ProposedAction(
+                type: .createMatkasseBox,
+                summary: "Add matkasse box: \(provider)",
+                payload: .createMatkasseBox(
+                    provider: provider,
+                    deliveryWeek: deliveryWeek,
+                    numberOfMeals: args["numberOfMeals"]?.doubleValue.map { Int($0) },
+                    servingsPerMeal: args["servingsPerMeal"]?.doubleValue.map { Int($0) },
+                    price: args["price"]?.doubleValue.map { Decimal($0) },
+                    notes: args["notes"]?.stringValue
+                ),
+                riskLevel: .low
+            ))
+
+        case "addMatkasseMeal":
+            guard let boxProvider = args["boxProvider"]?.stringValue,
+                  let mealTitle = args["mealTitle"]?.stringValue else { return .none }
+            return .action(ProposedAction(
+                type: .addMatkasseMeal,
+                summary: "Add \(mealTitle) to \(boxProvider) box",
+                payload: .addMatkasseMeal(boxProvider: boxProvider, mealTitle: mealTitle),
+                riskLevel: .low
+            ))
+
+        case "updateMatkasseBox":
+            guard let existingProvider = args["existingProvider"]?.stringValue else { return .none }
+            let newProvider = args["newProvider"]?.stringValue
+            let deliveryWeek = args["deliveryWeek"]?.stringValue.flatMap { Self.dateFormatter.date(from: $0) }
+            return .action(ProposedAction(
+                type: .updateMatkasseBox,
+                summary: newProvider.map { "Rename matkasse box \(existingProvider) to \($0)" } ?? "Update matkasse box: \(existingProvider)",
+                payload: .updateMatkasseBox(
+                    existingProvider: existingProvider,
+                    newProvider: newProvider,
+                    deliveryWeek: deliveryWeek,
+                    numberOfMeals: args["numberOfMeals"]?.doubleValue.map { Int($0) },
+                    servingsPerMeal: args["servingsPerMeal"]?.doubleValue.map { Int($0) },
+                    price: args["price"]?.doubleValue.map { Decimal($0) },
+                    notes: args["notes"]?.stringValue
+                ),
+                riskLevel: .low
+            ))
+
+        case "deleteMatkasseBox":
+            guard let provider = args["provider"]?.stringValue else { return .none }
+            return .action(ProposedAction(
+                type: .deleteMatkasseBox,
+                summary: "Delete matkasse box: \(provider)",
+                payload: .deleteMatkasseBox(provider: provider),
+                riskLevel: .high
+            ))
+
+        case "removeMatkasseMeal":
+            guard let boxProvider = args["boxProvider"]?.stringValue,
+                  let mealTitle = args["mealTitle"]?.stringValue else { return .none }
+            return .action(ProposedAction(
+                type: .removeMatkasseMeal,
+                summary: "Remove \(mealTitle) from \(boxProvider) box",
+                payload: .removeMatkasseMeal(boxProvider: boxProvider, mealTitle: mealTitle),
+                riskLevel: .medium
             ))
 
         case "createMemory":
@@ -766,6 +1130,66 @@ final class GeminiAIService: AIService, OnboardingAIService, ReceiptParsingAISer
                 summary: "Delete price: \(product)" + (store.map { " at \($0)" } ?? ""),
                 payload: .deletePriceObservation(productName: product, storeBranchName: store),
                 riskLevel: .medium
+            ))
+
+        case "confirmPriceObservation":
+            guard let product = args["productName"]?.stringValue else { return .none }
+            let store = args["storeBranchName"]?.stringValue
+            return .action(ProposedAction(
+                type: .confirmPriceObservation,
+                summary: "Confirm price still accurate: \(product)" + (store.map { " at \($0)" } ?? ""),
+                payload: .confirmPriceObservation(productName: product, storeBranchName: store),
+                riskLevel: .low
+            ))
+
+        case "flagCommunityPrice":
+            guard let product = args["productName"]?.stringValue else { return .none }
+            let store = args["storeBranchName"]?.stringValue
+            return .action(ProposedAction(
+                type: .flagCommunityPrice,
+                summary: "Flag community price: \(product)" + (store.map { " at \($0)" } ?? ""),
+                payload: .flagCommunityPrice(productName: product, storeBranchName: store),
+                riskLevel: .low
+            ))
+
+        case "addProductAlias":
+            guard let product = args["productName"]?.stringValue,
+                  let alias = args["alias"]?.stringValue else { return .none }
+            return .action(ProposedAction(
+                type: .addProductAlias,
+                summary: "Add alias \"\(alias)\" to \(product)",
+                payload: .addProductAlias(productName: product, alias: alias),
+                riskLevel: .low
+            ))
+
+        case "removeProductAlias":
+            guard let product = args["productName"]?.stringValue,
+                  let alias = args["alias"]?.stringValue else { return .none }
+            return .action(ProposedAction(
+                type: .removeProductAlias,
+                summary: "Remove alias \"\(alias)\" from \(product)",
+                payload: .removeProductAlias(productName: product, alias: alias),
+                riskLevel: .low
+            ))
+
+        case "setProductBarcode":
+            guard let product = args["productName"]?.stringValue,
+                  let barcode = args["barcode"]?.stringValue else { return .none }
+            return .action(ProposedAction(
+                type: .setProductBarcode,
+                summary: "Set barcode for \(product)",
+                payload: .setProductBarcode(productName: product, barcode: barcode),
+                riskLevel: .low
+            ))
+
+        case "changeAppSetting":
+            guard let key = args["key"]?.stringValue,
+                  let value = args["value"]?.stringValue else { return .none }
+            return .action(ProposedAction(
+                type: .changeAppSetting,
+                summary: "Change setting: \(key) → \(value)",
+                payload: .changeAppSetting(key: key, value: value),
+                riskLevel: .low
             ))
 
         case "createStore":

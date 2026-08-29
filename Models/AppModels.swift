@@ -779,6 +779,7 @@ enum AIPermissionArea: String, Codable, CaseIterable, Identifiable {
     case products = "Products"
     case prices = "Prices"
     case recipes = "Recipes"
+    case meals = "Meal Planning"
     case memory = "AI Memory"
     case household = "Household"
     case settings = "Settings"

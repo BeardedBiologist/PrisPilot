@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		4B95E991C60E585BAE63B2F8 /* StoreDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 570F82246B064D17490FB436 /* StoreDetailView.swift */; };
 		0A8DC2F11B3DF7BEC3A39995 /* MealPlanView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B099227B5AEC0C74C0EDECB0 /* MealPlanView.swift */; };
+		7A0DD52DA9E23ED646286268 /* MatkasseView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE92F666832B71B214EE5D58 /* MatkasseView.swift */; };
 		8A302494294082FC58A62EA8 /* InStoreModeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD42CDA3F2E6E5B51AEA2869 /* InStoreModeView.swift */; };
 		8C431DAC4E0B91AE06ACF959 /* ShoppingOverviewComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6F33978FF4323144CC8E191 /* ShoppingOverviewComponents.swift */; };
 		C44DE10E303E15310082FD4C /* AIScopePolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = C44DE10D303E15310082FD4C /* AIScopePolicy.swift */; };
@@ -68,6 +69,7 @@
 /* Begin PBXFileReference section */
 		570F82246B064D17490FB436 /* StoreDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoreDetailView.swift; sourceTree = "<group>"; };
 		B099227B5AEC0C74C0EDECB0 /* MealPlanView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MealPlanView.swift; sourceTree = "<group>"; };
+		DE92F666832B71B214EE5D58 /* MatkasseView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MatkasseView.swift; sourceTree = "<group>"; };
 		BD42CDA3F2E6E5B51AEA2869 /* InStoreModeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InStoreModeView.swift; sourceTree = "<group>"; };
 		C44DE10D303E15310082FD4C /* AIScopePolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIScopePolicy.swift; sourceTree = "<group>"; };
 		C44DE1D0303E315B0082FD4C /* SpeechInputService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechInputService.swift; sourceTree = "<group>"; };
@@ -303,6 +305,7 @@
 			children = (
 				C4CCD1903037542900157B4E /* RecipesView.swift */,
 				B099227B5AEC0C74C0EDECB0 /* MealPlanView.swift */,
+				DE92F666832B71B214EE5D58 /* MatkasseView.swift */,
 			);
 			path = Recipes;
 			sourceTree = "<group>";
@@ -480,6 +483,7 @@
 				8A302494294082FC58A62EA8 /* InStoreModeView.swift in Sources */,
 				4B95E991C60E585BAE63B2F8 /* StoreDetailView.swift in Sources */,
 				0A8DC2F11B3DF7BEC3A39995 /* MealPlanView.swift in Sources */,
+				7A0DD52DA9E23ED646286268 /* MatkasseView.swift in Sources */,
 				C473BA1E3038623200C67296 /* AuthStore.swift in Sources */,
 				C4CCD19D3037583D00157B4E /* APIKeys.swift in Sources */,
 				C473BA1C3038622200C67296 /* AuthModels.swift in Sources */,

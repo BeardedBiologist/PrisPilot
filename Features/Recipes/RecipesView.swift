@@ -3,6 +3,7 @@ import SwiftUI
 struct RecipesView: View {
     @Environment(AppStore.self) private var store
     @State private var showRecipesList = false
+    @State private var showMatkasseList = false
 
     var body: some View {
         NavigationStack {
@@ -13,14 +14,23 @@ struct RecipesView: View {
             .navigationTitle("Meals")
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button { showRecipesList = true } label: {
-                        Image(systemName: "book.closed")
+                    HStack {
+                        Button { showMatkasseList = true } label: {
+                            Image(systemName: "shippingbox")
+                        }
+                        .accessibilityLabel("Matkasse")
+                        Button { showRecipesList = true } label: {
+                            Image(systemName: "book.closed")
+                        }
+                        .accessibilityLabel("Recipes")
                     }
-                    .accessibilityLabel("Recipes")
                 }
             }
             .sheet(isPresented: $showRecipesList) {
                 RecipesListView().environment(store)
+            }
+            .sheet(isPresented: $showMatkasseList) {
+                MatkasseListView().environment(store)
             }
         }
     }

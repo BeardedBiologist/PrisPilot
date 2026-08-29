@@ -7,85 +7,285 @@ the top. Each entry: what changed, why, how it was verified, what's next.
 
 ---
 
-## 2026-08-25 — Phase 11 (Meals: week planner UI) implemented
+## 2026-08-25 — Full CRUD audit + closure: chat can now trigger every AppStore mutation
 
-`xcodebuild ... build` → **BUILD SUCCEEDED**. This is the first phase where
-`MealPlan`/`MealPlanSlot` (Phase 10) get real UI.
+Josh's ask after Phase 13: "can we do full CRUD on all tabs on all
+actions? ... the chat needs to be able to do absolutely everything." Not
+one of the phase plan's original 13 phases — a cross-cutting closure pass
+across all of them. `xcodebuild ... build` → **BUILD SUCCEEDED**.
 
-**`Models/AppModels.swift`:** added `Calendar.mealPlanCalendar` — a
-Monday-start ISO calendar used everywhere meal-plan date math happens
-(week-start computation, same-day slot lookups), so a plan's
-`weekStartDate` means the same thing regardless of the device's own
-locale/first-weekday setting.
+**Audit method:** grepped every non-`private` method on `AppStore` (~70
+methods), then cross-referenced each mutating one against
+`ProposedActionType`/`ProposedActionPayload`/`execute(_:)` coverage. Found
+real gaps, not imagined ones — most notably **matkasse had create but no
+update or delete at all**, a literal missing-CRUD-letter gap, plus several
+Shopping mutations (status changes, optimize, move-to-store, substitute)
+and Prices actions (confirm/flag) that existed as working UI features with
+zero chat path to trigger them.
 
-**`Features/Recipes/RecipesView.swift`:**
-- `RecipeCostEstimate` (and its three supporting private types
-  `IngredientCostEstimate`, `BulkBuyRisk`, `RecipeStoreTotal`) un-privated
-  — mechanical visibility change only, no logic touched — so the new
-  planner file can reuse the exact same ingredient-price-matching machinery
-  for the week's grocery estimate instead of a second copy.
-- Root view restructured around a new `MealsSegment` (Plan/Recipes)
-  segmented control. **Plan is now the default/first segment** shown when
-  the tab opens, matching the product plan's "Recommended first screen:
-  1. Meal plan calendar" — Recipes browsing moved to the second segment
-  rather than being the tab's whole identity anymore.
-- Recipes segment gained a lightweight `RecipeFilter` (All/Favorites)
-  toggle. **Scoped down from the phase plan's literal "Favorites/Recent/
-  Tags filtering"** — Recent would need meal-plan-history-based inference
-  and Tags would need a filter-chip UI neither of which felt worth adding
-  in the same pass as the planner itself; Favorites alone (already a real
-  field on `Recipe`) was the highest-value, lowest-effort piece. Flagging
-  the trim rather than quietly shipping partial credit as if it were the
-  full ask.
+**New AI permission area:** `AIPermissionArea` gained
+`.meals = "Meal Planning"` (used already by Phase 13's meal-plan/matkasse
+actions, formalized here). Iterated generically by `SettingsView` and
+`AppSettings.defaultAIPermissionModes`, so it needed no manual UI wiring.
 
-**New file `Features/Recipes/MealPlanView.swift`** (registered in
-`project.pbxproj`, same four-piece wiring as every prior new file this
-session):
-- `MealPlanView`'s `body` returns `Section`s directly (not an owning
-  `List`) so it composes straight into `RecipesView`'s existing `List`
-  rather than nesting a scroll view inside a scroll view.
-- Week navigation (prev/next chevrons, date range label, a "This Week"
-  shortcut that only appears when viewing a different week), a horizontal
-  stat-tile summary row (planned/matkasse-covered/open/grocery-estimate/
-  missing-price counts — grocery estimate and missing-price count both
-  computed via `RecipeCostEstimate` per recipe-content slot, summed for
-  the week), and one `Section` per day of the week, each with a tappable
-  row per default meal type (breakfast/lunch/dinner).
-- **Deliberately shipped with only `MealType.defaultTypes` (no custom
-  meal-type UI yet)** — the phase plan's task text mentioned "custom per
-  user selection" but building meal-type management (add/rename/reorder
-  custom types) felt like its own small feature, not a natural fit
-  bundled into the same diff as the planner grid itself. Noted here as a
-  disclosed scope trim, same as the Favorites-only recipe filter above.
-- `MealSlotEditorSheet`: a segmented Recipe/Matkasse/Freeform/Eating-Out
-  picker per slot, backed by `AppStore.setMealPlanSlot`/`clearMealPlanSlot`
-  (new this phase — create-or-replace-by-(date,mealType) semantics, since
-  a meal plan holds at most one slot per day+type). The "Eating Out" case
-  exists specifically so a week plan doesn't have to pretend every night
-  is a cooked meal, per the product plan's confirmed decision. A
-  "Leftovers" toggle marks cook-once-eat-twice slots without requiring a
-  second full recipe entry.
+**14 new `ProposedActionType`/payload pairs**, `execute(_:)` cases,
+`permissionTarget` mappings, and matching Gemini function declarations +
+`parseFunctionCall` cases — same established pattern as every prior phase,
+just applied exhaustively this time:
 
-**`Store/AppStore.swift`:** `mealPlan(forWeekStartDate:)`,
-`findOrCreateMealPlan` (private — only write paths create a plan; viewing
-an empty week never silently creates one), `setMealPlanSlot`,
-`clearMealPlanSlot`. All keyed through `Calendar.mealPlanCalendar` for
-consistent day/week matching.
+- **Shopping:** `setShoppingListStatus` (active/completed/archived — calls
+  the existing `activateList`/`completeShoppingList`/`archiveShoppingList`
+  UI methods directly rather than adding a 5th status-mutation method),
+  `optimizeShoppingList`, `moveShoppingListItem`, `substituteShoppingListItem`.
+- **Prices/Products:** `confirmPriceObservation` ("still accurate" —
+  reuses Phase 8's method), `flagCommunityPrice`, `addProductAlias`,
+  `removeProductAlias`, `setProductBarcode`.
+- **Meals/Matkasse:** `buildShoppingListFromMealPlan` (defaults to the
+  current week when no date given — reuses Phase 12's
+  `generateShoppingList` exactly, no new generation logic),
+  `updateMatkasseBox` (new `AppStore` method — **this domain had zero
+  update capability before, UI included**; Josh's matkasse box detail
+  screen still has no manual edit affordance either, only chat can update
+  a box right now — flagging that asymmetry rather than hiding it),
+  `deleteMatkasseBox`, `removeMatkasseMeal`.
+- **Settings:** `changeAppSetting` **had no general-chat function
+  declaration at all** — it was only ever driven by the separate
+  onboarding-specific JSON-extraction prompt, so a mid-conversation "set my
+  max stores to 3" had no path to succeed outside onboarding. Added the
+  missing declaration, and extended `applySettingChange`'s key switch with
+  three settings that existed in `AppSettings` but were never chat-
+  reachable at all: `travelCostPerKm`, `fixedStoreVisitCost`,
+  `communityPricingEnabled`.
 
-**Not committed.** Changed: `Features/Recipes/MealPlanView.swift` (new),
-`Features/Recipes/RecipesView.swift`, `Models/AppModels.swift`,
+**Undo:** no new undoable actions this pass — everything added here is
+either an edit/status-change (upsert-shaped, same non-undoable reasoning
+as every prior phase's updates) or `deleteMatkasseBox`/`removeMatkasseMeal`
+(deletes — this app's undo model only ever supported create-by-ID, never
+delete, consistent with `deleteStore`/`deleteProduct`/etc. throughout).
+
+**Skipped `MockAIService`** for all 14, same standing reasoning as Phase 9
+and Phase 13 — not investing more keyword-heuristic tuning in the no-API-
+key fallback while the live-model list/product-matching reliability issue
+is still open and unaddressed.
+
+**Deliberately excluded from this closure pass** (audited, not missed):
+- **Household CRUD** (`createHousehold`, `inviteHouseholdMember`,
+  `updateHouseholdMember` action *types* have existed since before this
+  session but were never given payloads or execute cases — confirmed they
+  are genuinely dead code today). Not closed here: `createHousehold(name:
+  owner: AuthUser)` needs an `AuthUser`, and `execute(_ action:
+  ProposedAction) throws -> [UUID]` has no user-context parameter at all —
+  this is an architecture gap (the method signature would need to change,
+  threading auth context through the whole proposal/approval pipeline),
+  not a same-shape missing-case gap like everything else in this pass.
+  Also a genuinely rare, high-stakes, one-time flow better left UI-only.
+- `deleteAllLocalData`, `resetOnboarding`, `setPermissionMode` — deliberately
+  never chat-triggerable. The first two are catastrophic/irreversible; the
+  third would let the AI edit its own permission grants, which defeats the
+  point of having them.
+- `deleteChain` (deletes an entire supermarket chain across all its
+  branches) — `deleteStore` already covers branch-level deletion, the
+  actual common case; chain-level felt like a rare enough edge case to
+  leave for a future pass if it turns out to matter.
+- `undoCompleteItem` — "mark as not bought" is already fully covered by
+  `completeShoppingListItem`'s existing `isCompleted: false` path; a
+  separate undo-specific action would be redundant.
+
+**Not committed.** Changed: `Models/AppModels.swift`,
+`Models/ProposedAction.swift`, `Services/GeminiAIService.swift`,
+`Store/AppStore.swift`.
+
+### What's next
+
+Review checkpoint: this is a large, mechanical batch — worth Josh spot-
+checking a few from each category via Chat rather than every single one:
+"archive my old shopping list", "move milk to Rema" (item-level store
+move), "delete my Adams Matkasse box" (should ask for confirmation —
+high risk), "set my travel cost to 2 kr per km", "confirm the price I
+logged for bread is still right". After that, the two standing items from
+the Phase 13 entry above are still open: an on-device pass through Meals
+(Phases 10–13 were never tested live), and the AI list/product-matching
+reliability issue — now with substantially more surface area for that bug
+to potentially show up in, given how many more targeted lookups chat can
+now trigger.
+
+---
+
+## 2026-08-25 — Phase 13 (Meals: AI actions expansion) implemented — all 13 phases now done
+
+`xcodebuild ... build` → **BUILD SUCCEEDED**. This is the last phase in
+`SHOPPING_PRICES_RECIPES_PHASE_PLAN.md` — Shopping (5), Prices (5), and
+Meals (5, counting the Phase 11 revision as part of the same phase-11
+slice) are all now implemented.
+
+**New AI permission area:** `AIPermissionArea` gained `.meals = "Meal
+Planning"` (`Models/AppModels.swift`) — meal-plan slots and matkasse are a
+new domain, distinct from `.recipes` (which already existed for actual
+recipe CRUD). `SettingsView.swift` and `AppSettings.defaultAIPermissionModes`
+both iterate `AIPermissionArea.allCases` generically, so the new area's
+View/Create/Edit/Delete toggles show up in Settings automatically — no
+manual list to update there.
+
+**`Models/ProposedAction.swift`:** `updateRecipe`/`deleteRecipe` payload
+cases added (the type-without-payload gap this session has now closed for
+every domain — Shopping in Phase 5, Prices in Phase 9, Meals here). Four
+new types + payloads: `setMealPlanSlot`, `removeMealPlanSlot`,
+`createMatkasseBox`, `addMatkasseMeal`. `removeMealPlanSlot` added to
+`isDestructive`.
+
+**Deliberate deviation from the phase plan's literal task list:** the plan
+named three separate types — `createMealPlanSlot`, `updateMealPlanSlot`,
+`removeMealPlanSlot` — written before `AppStore.setMealPlanSlot` existed.
+Since that method (built in Phase 11) is already create-or-replace by
+(date, mealType), a separate "update" action would just call the exact
+same code path as "create" — so there's one `setMealPlanSlot` action
+covering both, not two. Documented here rather than padding the type list
+to match a plan written before the real API shape was known.
+
+**`Store/AppStore.swift`:**
+- `execute(_:)` gained all six new cases. `setMealPlanSlot`'s case has to
+  decide *which* `MealSlotContent` variant from three optional-ish inputs
+  (`recipeTitle`, `isEatingOut`, `freeformText`) — checked in that order
+  (recipe match first, then explicit eating-out, then freeform text),
+  returning `[]` (a no-op) if none resolve to anything, rather than
+  guessing.
+- Two new lookup helpers: `recipeIndex(matching:)` (same non-creating
+  exact-match pattern as every prior phase's lookup helpers) and
+  `mealType(fromRawValue:)`, which maps the chat-provided string to
+  `MealType`, falling back to `.custom(raw)` for anything that isn't
+  Breakfast/Lunch/Dinner — lets "add a snack Tuesday" resolve to a custom
+  meal type instead of failing outright, even though Phase 11's planner UI
+  itself still only *displays* the three defaults (a slot with a custom
+  type created via chat would exist in the data but wouldn't show up on
+  the grid yet — a real, disclosed gap between what chat can create and
+  what the UI can currently show).
+- Undo: `createMatkasseBox` and `addMatkasseMeal` added to
+  `canUndoActivityTag`/`undoActivityTag` (both unambiguous creates,
+  `addMatkasseMeal`'s execute case now looks up and returns the newly
+  appended meal's ID specifically so it has something to undo *by*).
+  `setMealPlanSlot`/`removeMealPlanSlot` deliberately **not** made
+  undoable — same reasoning as every update/upsert-shaped action in this
+  session (Phase 5, Phase 9): this app's undo model only supports
+  delete-by-created-ID, and an upsert might have overwritten a slot that
+  already existed, which delete-by-ID would handle wrong.
+
+**`Services/GeminiAIService.swift`:** six new `functionDeclarations()` +
+`parseFunctionCall(_:)` pairs. Dates (`setMealPlanSlot`/
+`removeMealPlanSlot`'s `date`, `createMatkasseBox`'s `deliveryWeek`) use
+the same `YYYY-MM-DD` string + `Self.dateFormatter` pattern Phase 5
+established. Risk levels: `high` for `deleteRecipe`, `medium` for
+`removeMealPlanSlot`, `low` for the rest.
+
+**Skipped `MockAIService`** for this phase, same reasoning recorded in
+Phase 9's entry — not worth hand-tuning more keyword heuristics for a
+fallback path when the known list-matching issue already means the *live*
+model isn't reliably hitting the right target either.
+
+**Not committed.** Changed: `Models/AppModels.swift`,
+`Models/ProposedAction.swift`, `Services/GeminiAIService.swift`,
+`Store/AppStore.swift`.
+
+### What's next — all 13 phases done, review + backlog
+
+Review checkpoint: Josh to test via Chat — "plan spaghetti for Tuesday
+dinner" (should find the existing recipe if the title matches closely),
+"we're eating out Friday", "remove Thursday's dinner plan", "add a
+[whatever] matkasse box for next week", "delete recipe X". Also worth
+re-testing whether these show the same list/product-matching flakiness as
+the standing known-issue entry above, or work more reliably — recipe/meal-
+type matching is a smaller search space than shopping-list names, so it's
+a reasonable data point either way.
+
+With Phase 13 done, every phase in `SHOPPING_PRICES_RECIPES_PHASE_PLAN.md`
+is implemented and build-verified, though **most of it is still only
+compile-verified, not on-device tested** — Phases 1–9 (Shopping, Prices)
+were checked live by Josh; Phases 10–13 (Meals) have not been, per his
+"I'll test on my phone" preference this session. The two standing items
+before calling this redesign truly finished:
+1. On-device pass through Meals (Phases 10–13) the same way Shopping and
+   Prices already got.
+2. The AI-reliability known issue logged after Phase 5 — list/product
+   targeting getting it wrong — still open, still deferred, now with two
+   more data points (Prices Phase 9, Meals Phase 13) worth checking
+   against the same root-cause hypothesis before attempting a fix.
+
+Beyond that, `SHOPPING_PRICES_RECIPES_PHASE_PLAN.md`'s Backlog section
+(travel-cost-aware optimization, pantry tracking, price trend charts,
+household dashboards, etc.) remains explicitly unscheduled — nothing in
+this session pulled any of it forward.
+
+---
+
+## 2026-08-25 — Phase 12 (Meals: shopping-list generation + matkasse UI) implemented
+
+`xcodebuild ... build` → **BUILD SUCCEEDED**. This completes the Meals
+data-and-UI arc — Phase 13 (AI actions) is the only Meals phase left.
+
+**`Store/AppStore.swift`** — two new `MARK` sections:
+- **Shopping-list generation:** `ShoppingListGenerationMode`
+  (`.singleList` / `.perWeek`) and `generateShoppingList(fromSlots:mode:
+  excludingIngredientNames:listNamePrefix:)`. Only `.recipe` slots
+  contribute ingredients — matkasse/freeform/eating-out are skipped, per
+  the product plan's confirmed decision that matkasse ingredients
+  shouldn't duplicate what's already being delivered. `.perWeek` groups
+  slots by `weekStartDate(for:)` (Phase 11's per-day week resolution) so
+  it works correctly even when the generating range is a fortnight or
+  month spanning several `MealPlan` records, not just a literal week.
+  Duplicate ingredients merge via the existing `looselyMatchesProductName`
+  (Phase 7), and same-family quantities actually **sum** rather than list
+  twice — new `mergedQuantityText(_:)` reuses Phase 6's
+  `baseUnitsPerUnit`/`normalizedComparisonUnit` unit-price helpers to
+  combine e.g. 400 g + 600 g into "1 kg" (pieces/packs don't cross-merge
+  with weight/volume or each other, since there's no sane single sum for
+  "3 pieces + 2 packs").
+- **Matkasse CRUD:** `createMatkasseBox`, `deleteMatkasseBox`,
+  `addMatkasseMeal(to:title:ingredients:)`, `removeMatkasseMeal(_:from:)` —
+  straightforward array mutators matching every other CRUD method's shape
+  in this file.
+
+**New file `Features/Recipes/MatkasseView.swift`** (registered in
+`project.pbxproj`, same wiring as every prior new file): `MatkasseListView`
+(box list, swipe-to-delete, "+" to add), `MatkasseBoxDetailView` (box
+info + its meals, "+" to add a meal), `AddMatkasseBoxSheet` (provider free
+text — no branded picker, per the product plan; delivery week normalized
+to its Monday via `Calendar.mealPlanCalendar` so it lines up with the
+planner's own week math), `AddMatkasseMealSheet` (title + an optional
+ingredient list reusing the exact same draft-row UI `AddRecipeSheet`
+already established in `ManualEntrySheets.swift` — same field layout,
+independently-scoped `DraftIngredient` type, not a shared one, since
+`AddRecipeSheet`'s is a private nested type and duplicating a 10-line
+struct was simpler than restructuring an existing, working file just to
+share it).
+
+**`Features/Recipes/RecipesView.swift`:** added a second toolbar icon
+("shippingbox", opens `MatkasseListView`) next to Phase 11's "book.closed"
+Recipes icon — same pattern, so Meals' root toolbar now has two icons
+opening two separate pages, consistent with how Prices' toolbar already
+stacks multiple icon buttons.
+
+**`Features/Recipes/MealPlanView.swift`:** new "Build Shopping List"
+button (only shown when the visible range has at least one recipe slot),
+opening a new `BuildShoppingListSheet` — grouping mode picker (One List /
+One List Per Week) and an "Already Have" checklist built from every
+distinct ingredient name across the visible range's recipe slots, tap to
+exclude. Generates via `AppStore.generateShoppingList`, using the current
+range's `periodRangeText` as the list name prefix.
+
+**Not committed.** Changed: `Features/Recipes/MatkasseView.swift` (new),
+`Features/Recipes/MealPlanView.swift`, `Features/Recipes/RecipesView.swift`,
 `PrisPilot.xcodeproj/project.pbxproj`, `Store/AppStore.swift`.
 
 ### What's next
 
-Review checkpoint: Josh to open the Meals tab (now defaults to the Plan
-segment), tap a meal slot to assign a recipe/freeform/eating-out entry,
-confirm the week summary numbers update, navigate prev/next week, and
-switch to the Recipes segment to confirm browsing/favoriting/adding
-recipes still all work exactly as before. Matkasse slot assignment will
-show "No matkasse boxes yet" until Phase 12 adds a way to create one —
-that's expected, not a bug. Once confirmed, Phase 12 (Meals: shopping-list
-generation + matkasse UI) is next.
+Review checkpoint: Josh to add a matkasse box via the new shippingbox
+icon, add a meal to it, then place that meal on a planner slot (should now
+show real options instead of "No matkasse boxes yet"); plan a couple of
+recipe slots and try "Build Shopping List" in both grouping modes, with
+and without excluding an ingredient — confirm the generated list(s) show
+up correctly in the Shopping tab with merged quantities. Once confirmed,
+Phase 13 (Meals: AI actions expansion) closes out the Meals block the same
+way Phase 5 and Phase 9 closed out Shopping and Prices — at which point
+all 13 phases from the phase plan are done.
 
 ---
 
@@ -167,6 +367,88 @@ which slots are already planned. Once confirmed, Phase 12 (Meals:
 shopping-list generation + matkasse UI) continues — this revision didn't
 touch matkasse creation, so "No matkasse boxes yet" in the slot editor is
 still expected until then.
+
+---
+
+## 2026-08-25 — Phase 11 (Meals: week planner UI) implemented
+
+`xcodebuild ... build` → **BUILD SUCCEEDED**. This is the first phase where
+`MealPlan`/`MealPlanSlot` (Phase 10) get real UI.
+
+**`Models/AppModels.swift`:** added `Calendar.mealPlanCalendar` — a
+Monday-start ISO calendar used everywhere meal-plan date math happens
+(week-start computation, same-day slot lookups), so a plan's
+`weekStartDate` means the same thing regardless of the device's own
+locale/first-weekday setting.
+
+**`Features/Recipes/RecipesView.swift`:**
+- `RecipeCostEstimate` (and its three supporting private types
+  `IngredientCostEstimate`, `BulkBuyRisk`, `RecipeStoreTotal`) un-privated
+  — mechanical visibility change only, no logic touched — so the new
+  planner file can reuse the exact same ingredient-price-matching machinery
+  for the week's grocery estimate instead of a second copy.
+- Root view restructured around a new `MealsSegment` (Plan/Recipes)
+  segmented control. **Plan is now the default/first segment** shown when
+  the tab opens, matching the product plan's "Recommended first screen:
+  1. Meal plan calendar" — Recipes browsing moved to the second segment
+  rather than being the tab's whole identity anymore.
+- Recipes segment gained a lightweight `RecipeFilter` (All/Favorites)
+  toggle. **Scoped down from the phase plan's literal "Favorites/Recent/
+  Tags filtering"** — Recent would need meal-plan-history-based inference
+  and Tags would need a filter-chip UI neither of which felt worth adding
+  in the same pass as the planner itself; Favorites alone (already a real
+  field on `Recipe`) was the highest-value, lowest-effort piece. Flagging
+  the trim rather than quietly shipping partial credit as if it were the
+  full ask.
+
+**New file `Features/Recipes/MealPlanView.swift`** (registered in
+`project.pbxproj`, same four-piece wiring as every prior new file this
+session):
+- `MealPlanView`'s `body` returns `Section`s directly (not an owning
+  `List`) so it composes straight into `RecipesView`'s existing `List`
+  rather than nesting a scroll view inside a scroll view.
+- Week navigation (prev/next chevrons, date range label, a "This Week"
+  shortcut that only appears when viewing a different week), a horizontal
+  stat-tile summary row (planned/matkasse-covered/open/grocery-estimate/
+  missing-price counts — grocery estimate and missing-price count both
+  computed via `RecipeCostEstimate` per recipe-content slot, summed for
+  the week), and one `Section` per day of the week, each with a tappable
+  row per default meal type (breakfast/lunch/dinner).
+- **Deliberately shipped with only `MealType.defaultTypes` (no custom
+  meal-type UI yet)** — the phase plan's task text mentioned "custom per
+  user selection" but building meal-type management (add/rename/reorder
+  custom types) felt like its own small feature, not a natural fit
+  bundled into the same diff as the planner grid itself. Noted here as a
+  disclosed scope trim, same as the Favorites-only recipe filter above.
+- `MealSlotEditorSheet`: a segmented Recipe/Matkasse/Freeform/Eating-Out
+  picker per slot, backed by `AppStore.setMealPlanSlot`/`clearMealPlanSlot`
+  (new this phase — create-or-replace-by-(date,mealType) semantics, since
+  a meal plan holds at most one slot per day+type). The "Eating Out" case
+  exists specifically so a week plan doesn't have to pretend every night
+  is a cooked meal, per the product plan's confirmed decision. A
+  "Leftovers" toggle marks cook-once-eat-twice slots without requiring a
+  second full recipe entry.
+
+**`Store/AppStore.swift`:** `mealPlan(forWeekStartDate:)`,
+`findOrCreateMealPlan` (private — only write paths create a plan; viewing
+an empty week never silently creates one), `setMealPlanSlot`,
+`clearMealPlanSlot`. All keyed through `Calendar.mealPlanCalendar` for
+consistent day/week matching.
+
+**Not committed.** Changed: `Features/Recipes/MealPlanView.swift` (new),
+`Features/Recipes/RecipesView.swift`, `Models/AppModels.swift`,
+`PrisPilot.xcodeproj/project.pbxproj`, `Store/AppStore.swift`.
+
+### What's next
+
+Review checkpoint: Josh to open the Meals tab (now defaults to the Plan
+segment), tap a meal slot to assign a recipe/freeform/eating-out entry,
+confirm the week summary numbers update, navigate prev/next week, and
+switch to the Recipes segment to confirm browsing/favoriting/adding
+recipes still all work exactly as before. Matkasse slot assignment will
+show "No matkasse boxes yet" until Phase 12 adds a way to create one —
+that's expected, not a bug. Once confirmed, Phase 12 (Meals: shopping-list
+generation + matkasse UI) is next.
 
 ---
 
