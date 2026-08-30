@@ -54,6 +54,17 @@ struct AIContext {
     var enabledStoreBranches: [String]
     var userPreferences: String
     var currency: Currency
+    var currentDateISO: String
+    var timeZoneIdentifier: String
+    var localeSummary: String
+    var settingsSummary: [String]
+    var shoppingListSummaries: [String]
+    var productSummaries: [String]
+    var recentPriceSummaries: [String]
+    var recipeSummaries: [String]
+    var mealPlanSummaries: [String]
+    var matkasseSummaries: [String]
+    var memorySummaries: [String]
 
     static var empty: AIContext {
         AIContext(
@@ -61,7 +72,18 @@ struct AIContext {
             availableShoppingLists: [],
             enabledStoreBranches: [],
             userPreferences: "",
-            currency: .nok
+            currency: .nok,
+            currentDateISO: "",
+            timeZoneIdentifier: "",
+            localeSummary: "",
+            settingsSummary: [],
+            shoppingListSummaries: [],
+            productSummaries: [],
+            recentPriceSummaries: [],
+            recipeSummaries: [],
+            mealPlanSummaries: [],
+            matkasseSummaries: [],
+            memorySummaries: []
         )
     }
 }

@@ -123,11 +123,8 @@ class ChatViewModel {
         var tags: [ActivityTag] = []
         for action in result.proposedActions {
             var executableAction = action
-            executableAction.validationResult = appStore.validate(executableAction)
-            if let ids = try? appStore.execute(executableAction) {
-                executableAction.resultingRecordIDs = ids
-                executableAction.status = .completed
-                tags.append(ActivityTag(from: executableAction))
+            if let tag = executeActionForChat(&executableAction) {
+                tags.append(tag)
             }
         }
 
@@ -144,11 +141,8 @@ class ChatViewModel {
                 requiresConfirmation: false
             )
             var executableAction = action
-            executableAction.validationResult = appStore.validate(executableAction)
-            if let ids = try? appStore.execute(executableAction) {
-                executableAction.resultingRecordIDs = ids
-                executableAction.status = .completed
-                tags.append(ActivityTag(from: executableAction))
+            if let tag = executeActionForChat(&executableAction) {
+                tags.append(tag)
             }
         }
 
@@ -167,24 +161,14 @@ class ChatViewModel {
     func approveAll(in messageID: UUID) {
         guard let sessionID = appStore.selectedChatSessionID,
               let message = appStore.messages(for: sessionID).first(where: { $0.id == messageID }),
-              case .proposedActions(_, var actions, let memoryProposals) = message.content
+              case .proposedActions(let intro, var actions, let memoryProposals) = message.content
         else { return }
 
         var tags: [ActivityTag] = []
 
         for i in 0..<actions.count where actions[i].status == .pending {
-            actions[i].validationResult = appStore.validate(actions[i])
-            guard actions[i].validationResult.isValid else {
-                actions[i].status = .failed
-                continue
-            }
-            actions[i].status = .executing
-            if let ids = try? appStore.execute(actions[i]) {
-                actions[i].resultingRecordIDs = ids
-                actions[i].status = .completed
-                tags.append(ActivityTag(from: actions[i]))
-            } else {
-                actions[i].status = .failed
+            if let tag = executeActionForChat(&actions[i]) {
+                tags.append(tag)
             }
         }
 
@@ -200,15 +184,16 @@ class ChatViewModel {
                 )
             )
             var executableAction = memAction
-            executableAction.validationResult = appStore.validate(executableAction)
-            if let ids = try? appStore.execute(executableAction) {
-                executableAction.resultingRecordIDs = ids
-                executableAction.status = .completed
-                tags.append(ActivityTag(from: executableAction))
+            if let tag = executeActionForChat(&executableAction) {
+                tags.append(tag)
             }
         }
 
-        appStore.replaceMessage(messageID, in: sessionID, with: .activityTags(tags))
+        if actions.contains(where: { $0.status == .failed }) {
+            appStore.replaceMessage(messageID, in: sessionID, with: .proposedActions(intro: intro, actions: actions, memoryProposals: []))
+        } else {
+            appStore.replaceMessage(messageID, in: sessionID, with: .activityTags(tags))
+        }
     }
 
     func approve(actionID: UUID, in messageID: UUID) {
@@ -218,22 +203,7 @@ class ChatViewModel {
               let actIdx = actions.firstIndex(where: { $0.id == actionID })
         else { return }
 
-        actions[actIdx].validationResult = appStore.validate(actions[actIdx])
-        guard actions[actIdx].validationResult.isValid else {
-            actions[actIdx].status = .failed
-            let content = ChatMessageContent.proposedActions(intro: intro, actions: actions, memoryProposals: memoryProposals)
-            appStore.replaceMessage(messageID, in: sessionID, with: content)
-            collapseIfAllTerminal(messageID: messageID, sessionID: sessionID)
-            return
-        }
-
-        actions[actIdx].status = .executing
-        if let ids = try? appStore.execute(actions[actIdx]) {
-            actions[actIdx].resultingRecordIDs = ids
-            actions[actIdx].status = .completed
-        } else {
-            actions[actIdx].status = .failed
-        }
+        _ = executeActionForChat(&actions[actIdx])
 
         let content = ChatMessageContent.proposedActions(intro: intro, actions: actions, memoryProposals: memoryProposals)
         appStore.replaceMessage(messageID, in: sessionID, with: content)
@@ -268,27 +238,24 @@ class ChatViewModel {
     // MARK: - Private
 
     private func handleResponse(_ response: AIResponse, in sessionID: UUID) {
-        if let error = response.error {
-            appStore.appendMessage(ChatMessage(role: .assistant, content: .error(error)), to: sessionID)
-            return
-        }
+        let plannedTurn = AIActionPlanner(appStore: appStore).plan(response: response)
 
-        if !response.proposedActions.isEmpty || !response.memoryProposals.isEmpty {
-            let actions = response.proposedActions.map { action in
-                var validated = action
-                validated.validationResult = appStore.validate(action)
-                return validated
-            }
+        switch plannedTurn {
+        case .answer(let text), .refusal(let text):
+            appStore.appendMessage(ChatMessage(role: .assistant, content: .text(text)), to: sessionID)
+        case .clarification(let clarification):
+            appStore.appendMessage(ChatMessage(role: .assistant, content: .text(clarification.question)), to: sessionID)
+        case .proposal(let intro, let actions, let memoryProposals):
             appStore.appendMessage(ChatMessage(
                 role: .assistant,
                 content: .proposedActions(
-                    intro: response.textContent,
+                    intro: intro,
                     actions: actions,
-                    memoryProposals: response.memoryProposals
+                    memoryProposals: memoryProposals
                 )
             ), to: sessionID)
-        } else if let text = response.textContent {
-            appStore.appendMessage(ChatMessage(role: .assistant, content: .text(text)), to: sessionID)
+        case .failure(let error):
+            appStore.appendMessage(ChatMessage(role: .assistant, content: .error(error)), to: sessionID)
         }
     }
 
@@ -298,8 +265,39 @@ class ChatViewModel {
               actions.allSatisfy({ $0.status.isTerminal })
         else { return }
 
+        guard !actions.contains(where: { $0.status == .failed }) else { return }
         let tags = actions.filter { $0.status == .completed }.map { ActivityTag(from: $0) }
         appStore.replaceMessage(messageID, in: sessionID, with: .activityTags(tags))
+    }
+
+    private func executeActionForChat(_ action: inout ProposedAction) -> ActivityTag? {
+        action.validationResult = appStore.validate(action)
+        guard action.validationResult.isValid else {
+            action.status = .failed
+            return nil
+        }
+
+        action.status = .executing
+        do {
+            let ids = try appStore.execute(action)
+            if ids.isEmpty && action.type.expectsAffectedRecordIDs {
+                action.validationResult = .invalid(reason: "No matching records were changed.")
+                action.status = .failed
+                return nil
+            }
+
+            action.resultingRecordIDs = ids
+            action.status = .completed
+            return ActivityTag(from: action)
+        } catch let error as AIServiceError {
+            action.validationResult = .invalid(reason: error.localizedDescription)
+            action.status = .failed
+            return nil
+        } catch {
+            action.validationResult = .invalid(reason: error.localizedDescription)
+            action.status = .failed
+            return nil
+        }
     }
 
     private func buildAIMessages(for sessionID: UUID) -> [AIMessage] {
@@ -312,19 +310,6 @@ class ChatViewModel {
     }
 
     private func buildContext() -> AIContext {
-        let scopedMemories = appStore.activeMemories.filter { memory in
-            memory.scope == .personal || (memory.scope == .household && appStore.household != nil)
-        }
-        let scopedLists = appStore.activeLists.map { list in
-            "\(list.name) (\(list.scope.rawValue))"
-        }
-
-        return AIContext(
-            relevantMemories: Array(scopedMemories.prefix(10)),
-            availableShoppingLists: scopedLists,
-            enabledStoreBranches: appStore.branches.map { "\($0.displayName) (\($0.isEnabled ? "enabled" : "disabled"))" },
-            userPreferences: "",
-            currency: appStore.settings.currency
-        )
+        AIContextBuilder(appStore: appStore).build()
     }
 }

@@ -270,7 +270,7 @@ final class GeminiAIService: AIService, OnboardingAIService, ReceiptParsingAISer
             "contents": buildContents(from: messages),
             "systemInstruction": ["parts": [["text": buildSystemPrompt(context: context)]]],
             "tools": [["functionDeclarations": functionDeclarations()]],
-            "generationConfig": ["temperature": 0.3, "maxOutputTokens": 2048]
+            "generationConfig": ["temperature": 0.2, "maxOutputTokens": 2048]
         ]
         return try JSONSerialization.data(withJSONObject: body)
     }
@@ -297,10 +297,16 @@ final class GeminiAIService: AIService, OnboardingAIService, ReceiptParsingAISer
             "STYLE: For recipe and shopping-list text, use relevant food emojis sparingly so items are easy to scan, e.g. 🍅 Tomatoes or 🥛 Milk. Keep emojis out of structured tool arguments such as productName, listName, storeBranchName, settings, and memory summaries.",
             "",
             "CRITICAL: Never perform actions directly. Use tools to PROPOSE changes. The user approves all proposals before execution.",
+            "Each turn must be exactly one of: answer-only, clarification-only, proposal-only, refusal-only, or failure explanation. Do not mix uncertain actions with confident text.",
+            "Ask one concise clarification question instead of proposing actions when the target list, product, store branch, recipe, matkasse box, memory, or date is ambiguous.",
             "- Group related actions in one response (e.g. record a price AND add to list if user implies both).",
             "- Propose memory separately from shopping actions.",
             "- Keep text responses concise; let the proposed actions do the heavy lifting.",
             "- For prices, include quantity and unit when mentioned.",
+            "- Do not default to Weekly Shop when the user says 'the list' and multiple lists may fit. Ask which list.",
+            "- Do not invent store branches. If the user names only a chain and a specific branch is needed, ask which branch unless the user is clearly adding a new branch.",
+            "- Do not create a recipe when the user asks for an existing recipe's ingredients. Ask if the recipe is missing.",
+            "- Only propose memory when the user states a durable preference, habit, restriction, allergy, or decision rule.",
             "- Stores are user-managed. If the user asks to add, edit, delete, enable, or disable supermarket branches, propose store actions. Do not assume Oslo branches."
         ]
 
@@ -313,6 +319,47 @@ final class GeminiAIService: AIService, OnboardingAIService, ReceiptParsingAISer
         }
         if !context.enabledStoreBranches.isEmpty {
             lines.append("Known store branches: \(context.enabledStoreBranches.joined(separator: ", "))")
+        }
+        if !context.currentDateISO.isEmpty {
+            lines += [
+                "",
+                "Current date and locale:",
+                "- Date: \(context.currentDateISO)",
+                "- Timezone: \(context.timeZoneIdentifier)",
+                "- \(context.localeSummary)"
+            ]
+        }
+        if !context.settingsSummary.isEmpty {
+            lines += ["", "Current app settings:"]
+            lines += context.settingsSummary.map { "- \($0)" }
+        }
+        if !context.shoppingListSummaries.isEmpty {
+            lines += ["", "Shopping lists and pending items:"]
+            lines += context.shoppingListSummaries.map { "- \($0)" }
+        }
+        if !context.productSummaries.isEmpty {
+            lines += ["", "Known products:"]
+            lines += context.productSummaries.map { "- \($0)" }
+        }
+        if !context.recentPriceSummaries.isEmpty {
+            lines += ["", "Recent price observations:"]
+            lines += context.recentPriceSummaries.map { "- \($0)" }
+        }
+        if !context.recipeSummaries.isEmpty {
+            lines += ["", "Saved recipes:"]
+            lines += context.recipeSummaries.map { "- \($0)" }
+        }
+        if !context.mealPlanSummaries.isEmpty {
+            lines += ["", "Upcoming meal plan:"]
+            lines += context.mealPlanSummaries.map { "- \($0)" }
+        }
+        if !context.matkasseSummaries.isEmpty {
+            lines += ["", "Upcoming matkasse boxes:"]
+            lines += context.matkasseSummaries.map { "- \($0)" }
+        }
+        if !context.memorySummaries.isEmpty {
+            lines += ["", "Memory details with scope and sensitivity:"]
+            lines += context.memorySummaries.map { "- \($0)" }
         }
 
         return lines.joined(separator: "\n")
@@ -751,12 +798,46 @@ final class GeminiAIService: AIService, OnboardingAIService, ReceiptParsingAISer
             }
         }
 
-        return AIResponse(
-            textContent: textParts.isEmpty ? nil : textParts.joined(separator: "\n"),
-            proposedActions: actions,
-            memoryProposals: memoryProposals,
-            error: nil
+        let assistantText = textParts.isEmpty ? nil : textParts.joined(separator: "\n")
+        let draft = AIIntentDraft(
+            outcome: inferredTurnOutcome(
+                assistantText: assistantText,
+                actions: actions,
+                memoryProposals: memoryProposals
+            ),
+            assistantText: assistantText,
+            actions: actions.map { action in
+                AIDraftAction(proposedAction: action, source: "geminiFunctionCall")
+            },
+            memoryProposals: memoryProposals
         )
+
+        return draft.legacyResponse()
+    }
+
+    private func inferredTurnOutcome(
+        assistantText: String?,
+        actions: [ProposedAction],
+        memoryProposals: [MemoryProposal]
+    ) -> AITurnOutcome {
+        if !actions.isEmpty || !memoryProposals.isEmpty {
+            return .proposal
+        }
+
+        guard let text = assistantText?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else {
+            return .failure
+        }
+
+        let lowercased = text.lowercased()
+        if text.hasSuffix("?") || lowercased.hasPrefix("which ") || lowercased.hasPrefix("what ") {
+            return .clarification
+        }
+
+        if lowercased.contains("i can only help") || lowercased.contains("outside prispilot") {
+            return .refusal
+        }
+
+        return .answer
     }
 
     private enum ParseResult { case action(ProposedAction), memory(MemoryProposal), none }

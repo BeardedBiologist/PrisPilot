@@ -193,6 +193,10 @@ struct ActionRow: View {
             Text(message)
                 .font(.caption)
                 .foregroundStyle(.orange)
+        case .requiresClarification(let question):
+            Text(question)
+                .font(.caption)
+                .foregroundStyle(.orange)
         }
     }
 }

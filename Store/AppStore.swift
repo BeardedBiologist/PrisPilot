@@ -538,10 +538,667 @@ class AppStore {
             let permission = permissionTarget(for: action.type)
             return .invalid(reason: "AI is not allowed to \(permission.operation.rawValue.lowercased()) \(permission.area.rawValue.lowercased()).")
         }
+        if let semanticResult = semanticValidation(for: action) {
+            return semanticResult
+        }
         if action.type.isDestructive {
             return .warning(message: "Destructive AI actions require explicit approval.")
         }
         return .valid
+    }
+
+    private func semanticValidation(for action: ProposedAction) -> ValidationResult? {
+        guard actionTypeMatchesPayload(action) else {
+            return .invalid(reason: "AI action type does not match its payload.")
+        }
+
+        let resolver = AIEntityResolver(appStore: self)
+        switch action.payload {
+        case .createPriceObservation(let productName, let storeBranchName, let price, let quantity, let unit, _, let date):
+            if isBlank(productName) { return .invalid(reason: "Price needs a product name.") }
+            if isBlank(storeBranchName) { return .invalid(reason: "Price needs a store branch.") }
+            if case .ambiguous(let candidates) = resolver.product(named: productName, allowCreate: true) {
+                return .requiresClarification(question: resolver.clarificationQuestion(for: "product", candidates: candidates))
+            }
+            if case .ambiguous(let candidates) = resolver.storeBranch(named: storeBranchName, allowCreate: true) {
+                return .requiresClarification(question: resolver.clarificationQuestion(for: "store branch", candidates: candidates))
+            }
+            if dateIsTooFarInFuture(date) { return .invalid(reason: "Price date cannot be more than one day in the future.") }
+            if price <= 0 { return .invalid(reason: "Price must be greater than zero.") }
+            if price > Decimal(100_000) { return .invalid(reason: "Price is outside the expected grocery range.") }
+            if let quantity, quantity <= 0 { return .invalid(reason: "Quantity must be greater than zero.") }
+            if quantity != nil && unit == nil { return .invalid(reason: "Quantity needs a unit such as g, kg, ml, l, stk, or pk.") }
+
+        case .updatePriceObservation(let productName, let storeBranchName, let newPrice, let newQuantity, _):
+            if isBlank(productName) { return .invalid(reason: "Price update needs a product name.") }
+            if case .ambiguous(let candidates) = resolver.product(named: productName, allowCreate: false) {
+                return .requiresClarification(question: resolver.clarificationQuestion(for: "product", candidates: candidates))
+            }
+            if let storeBranchName, case .ambiguous(let candidates) = resolver.storeBranch(named: storeBranchName, allowCreate: false) {
+                return .requiresClarification(question: resolver.clarificationQuestion(for: "store branch", candidates: candidates))
+            }
+            if newPrice == nil && newQuantity == nil { return .invalid(reason: "Price update needs a new price or quantity.") }
+            if let newPrice, newPrice <= 0 { return .invalid(reason: "New price must be greater than zero.") }
+            if let newPrice, newPrice > Decimal(100_000) { return .invalid(reason: "New price is outside the expected grocery range.") }
+            if let newQuantity, newQuantity <= 0 { return .invalid(reason: "New quantity must be greater than zero.") }
+            if mostRecentPersonalObservationIndex(productName: productName, storeBranchName: storeBranchName) == nil {
+                return .invalid(reason: "No matching personal price observation was found for \(productName).")
+            }
+
+        case .deletePriceObservation(let productName, let storeBranchName),
+             .confirmPriceObservation(let productName, let storeBranchName):
+            if isBlank(productName) { return .invalid(reason: "Price action needs a product name.") }
+            if case .ambiguous(let candidates) = resolver.product(named: productName, allowCreate: false) {
+                return .requiresClarification(question: resolver.clarificationQuestion(for: "product", candidates: candidates))
+            }
+            if let storeBranchName, case .ambiguous(let candidates) = resolver.storeBranch(named: storeBranchName, allowCreate: false) {
+                return .requiresClarification(question: resolver.clarificationQuestion(for: "store branch", candidates: candidates))
+            }
+            if mostRecentPersonalObservationIndex(productName: productName, storeBranchName: storeBranchName) == nil {
+                return .invalid(reason: "No matching personal price observation was found.")
+            }
+
+        case .flagCommunityPrice(let productName, let storeBranchName):
+            if isBlank(productName) { return .invalid(reason: "Flagging a price needs a product name.") }
+            if case .ambiguous(let candidates) = resolver.product(named: productName, allowCreate: false) {
+                return .requiresClarification(question: resolver.clarificationQuestion(for: "product", candidates: candidates))
+            }
+            if let storeBranchName, case .ambiguous(let candidates) = resolver.storeBranch(named: storeBranchName, allowCreate: false) {
+                return .requiresClarification(question: resolver.clarificationQuestion(for: "store branch", candidates: candidates))
+            }
+            guard communityObservationExists(productName: productName, storeBranchName: storeBranchName) else {
+                return .invalid(reason: "No matching community price was found.")
+            }
+
+        case .addShoppingListItem(let listName, let productName, let quantity, _):
+            if isBlank(listName) { return .invalid(reason: "List item needs a shopping list name.") }
+            if isBlank(productName) { return .invalid(reason: "List item needs a product name.") }
+            if case .ambiguous(let candidates) = resolver.shoppingList(named: listName, allowCreate: true) {
+                return .requiresClarification(question: resolver.clarificationQuestion(for: "shopping list", candidates: candidates))
+            }
+            if case .ambiguous(let candidates) = resolver.product(named: productName, allowCreate: true) {
+                return .requiresClarification(question: resolver.clarificationQuestion(for: "product", candidates: candidates))
+            }
+            if isBlank(quantity) { return .invalid(reason: "List item needs a quantity.") }
+
+        case .createShoppingList(let name):
+            if isBlank(name) { return .invalid(reason: "Shopping list name cannot be empty.") }
+            switch resolver.shoppingList(named: name, allowCreate: true) {
+            case .resolved:
+                return .invalid(reason: "A shopping list named \(name) already exists.")
+            case .ambiguous(let candidates):
+                return .requiresClarification(question: resolver.clarificationQuestion(for: "shopping list", candidates: candidates))
+            case .missing, .creatable:
+                break
+            }
+
+        case .updateShoppingList(let existingListName, let newName, _):
+            switch resolver.shoppingList(named: existingListName, allowCreate: false) {
+            case .resolved:
+                break
+            case .ambiguous(let candidates):
+                return .requiresClarification(question: resolver.clarificationQuestion(for: "shopping list", candidates: candidates))
+            case .missing, .creatable:
+                return .invalid(reason: "No shopping list named \(existingListName) was found.")
+            }
+            if let newName, isBlank(newName) { return .invalid(reason: "New list name cannot be empty.") }
+            if let newName,
+               let existingIndex = shoppingListIndex(matching: newName),
+               shoppingLists[existingIndex].name.caseInsensitiveCompare(existingListName) != .orderedSame {
+                return .invalid(reason: "A shopping list named \(newName) already exists.")
+            }
+
+        case .deleteShoppingList(let listName):
+            switch resolver.shoppingList(named: listName, allowCreate: false) {
+            case .resolved:
+                break
+            case .ambiguous(let candidates):
+                return .requiresClarification(question: resolver.clarificationQuestion(for: "shopping list", candidates: candidates))
+            case .missing, .creatable:
+                return .invalid(reason: "No shopping list named \(listName) was found.")
+            }
+
+        case .updateShoppingListItem(let listName, let productName, let newQuantity, let newNotes):
+            let list: ShoppingList
+            switch resolver.shoppingList(named: listName, allowCreate: false) {
+            case .resolved(let resolvedList):
+                list = resolvedList
+            case .ambiguous(let candidates):
+                return .requiresClarification(question: resolver.clarificationQuestion(for: "shopping list", candidates: candidates))
+            case .missing, .creatable:
+                return .invalid(reason: "No shopping list named \(listName) was found.")
+            }
+            if case .ambiguous(let candidates) = resolver.shoppingListItem(productName: productName, in: list) {
+                return .requiresClarification(question: resolver.clarificationQuestion(for: "item", candidates: candidates))
+            }
+            if case .missing = resolver.shoppingListItem(productName: productName, in: list) { return .invalid(reason: "No item named \(productName) was found on \(listName).") }
+            if let newQuantity, isBlank(newQuantity) { return .invalid(reason: "New quantity cannot be empty.") }
+            if newQuantity == nil && newNotes == nil { return .invalid(reason: "Item update needs a new quantity or note.") }
+
+        case .completeShoppingListItem(let listName, let productName, _),
+             .removeShoppingListItem(let listName, let productName):
+            let list: ShoppingList
+            switch resolver.shoppingList(named: listName, allowCreate: false) {
+            case .resolved(let resolvedList):
+                list = resolvedList
+            case .ambiguous(let candidates):
+                return .requiresClarification(question: resolver.clarificationQuestion(for: "shopping list", candidates: candidates))
+            case .missing, .creatable:
+                return .invalid(reason: "No shopping list named \(listName) was found.")
+            }
+            switch resolver.shoppingListItem(productName: productName, in: list) {
+            case .resolved:
+                break
+            case .ambiguous(let candidates):
+                return .requiresClarification(question: resolver.clarificationQuestion(for: "item", candidates: candidates))
+            case .missing, .creatable:
+                return .invalid(reason: "No item named \(productName) was found on \(listName).")
+            }
+
+        case .substituteShoppingListItem(let listName, let productName, let newProductName):
+            let list: ShoppingList
+            switch resolver.shoppingList(named: listName, allowCreate: false) {
+            case .resolved(let resolvedList):
+                list = resolvedList
+            case .ambiguous(let candidates):
+                return .requiresClarification(question: resolver.clarificationQuestion(for: "shopping list", candidates: candidates))
+            case .missing, .creatable:
+                return .invalid(reason: "No shopping list named \(listName) was found.")
+            }
+            switch resolver.shoppingListItem(productName: productName, in: list) {
+            case .resolved:
+                break
+            case .ambiguous(let candidates):
+                return .requiresClarification(question: resolver.clarificationQuestion(for: "item", candidates: candidates))
+            case .missing, .creatable:
+                return .invalid(reason: "No item named \(productName) was found on \(listName).")
+            }
+            if isBlank(newProductName) { return .invalid(reason: "Substitute item needs a replacement product name.") }
+            if productName.caseInsensitiveCompare(newProductName) == .orderedSame { return .invalid(reason: "Cannot substitute an item with itself.") }
+            if case .ambiguous(let candidates) = resolver.product(named: newProductName, allowCreate: true) {
+                return .requiresClarification(question: resolver.clarificationQuestion(for: "replacement product", candidates: candidates))
+            }
+
+        case .setShoppingListStatus(let listName, let status):
+            if case .ambiguous(let candidates) = resolver.shoppingList(named: listName, allowCreate: false) {
+                return .requiresClarification(question: resolver.clarificationQuestion(for: "shopping list", candidates: candidates))
+            }
+            if case .missing = resolver.shoppingList(named: listName, allowCreate: false) { return .invalid(reason: "No shopping list named \(listName) was found.") }
+            if !["active", "completed", "done", "archived"].contains(status.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()) {
+                return .invalid(reason: "List status must be active, completed, or archived.")
+            }
+
+        case .optimizeShoppingList(let listName):
+            let list: ShoppingList
+            switch resolver.shoppingList(named: listName, allowCreate: false) {
+            case .resolved(let resolvedList):
+                list = resolvedList
+            case .ambiguous(let candidates):
+                return .requiresClarification(question: resolver.clarificationQuestion(for: "shopping list", candidates: candidates))
+            case .missing, .creatable:
+                return .invalid(reason: "No shopping list named \(listName) was found.")
+            }
+            if list.items.allSatisfy(\.isCompleted) { return .invalid(reason: "Shopping list has no pending items to optimize.") }
+            if enabledBranches.isEmpty { return .invalid(reason: "Add or enable a store before optimizing a list.") }
+
+        case .moveShoppingListItem(let listName, let productName, let storeBranchName):
+            let list: ShoppingList
+            switch resolver.shoppingList(named: listName, allowCreate: false) {
+            case .resolved(let resolvedList):
+                list = resolvedList
+            case .ambiguous(let candidates):
+                return .requiresClarification(question: resolver.clarificationQuestion(for: "shopping list", candidates: candidates))
+            case .missing, .creatable:
+                return .invalid(reason: "No shopping list named \(listName) was found.")
+            }
+            switch resolver.shoppingListItem(productName: productName, in: list) {
+            case .resolved:
+                break
+            case .ambiguous(let candidates):
+                return .requiresClarification(question: resolver.clarificationQuestion(for: "item", candidates: candidates))
+            case .missing, .creatable:
+                return .invalid(reason: "No item named \(productName) was found on \(listName).")
+            }
+            switch resolver.storeBranch(named: storeBranchName, allowCreate: false) {
+            case .resolved:
+                break
+            case .ambiguous(let candidates):
+                return .requiresClarification(question: resolver.clarificationQuestion(for: "store branch", candidates: candidates))
+            case .missing, .creatable:
+                return .invalid(reason: "No store branch named \(storeBranchName) was found.")
+            }
+
+        case .addRecipeToShoppingList(let recipeName, let listName):
+            if isBlank(listName) { return .invalid(reason: "Adding recipe ingredients needs a shopping list name.") }
+            switch resolver.recipe(named: recipeName, allowCreate: false) {
+            case .resolved:
+                break
+            case .ambiguous(let candidates):
+                return .requiresClarification(question: resolver.clarificationQuestion(for: "recipe", candidates: candidates))
+            case .missing, .creatable:
+                return .invalid(reason: "No recipe named \(recipeName) was found.")
+            }
+            if case .ambiguous(let candidates) = resolver.shoppingList(named: listName, allowCreate: true) {
+                return .requiresClarification(question: resolver.clarificationQuestion(for: "shopping list", candidates: candidates))
+            }
+
+        case .createProduct(let name, _, _):
+            if isBlank(name) { return .invalid(reason: "Product name cannot be empty.") }
+            switch resolver.product(named: name, allowCreate: true) {
+            case .resolved:
+                return .invalid(reason: "A product named \(name) already exists.")
+            case .ambiguous(let candidates):
+                return .requiresClarification(question: resolver.clarificationQuestion(for: "product", candidates: candidates))
+            case .missing, .creatable:
+                break
+            }
+
+        case .updateProduct(let existingName, let newName, _, _):
+            switch resolver.product(named: existingName, allowCreate: false) {
+            case .resolved:
+                break
+            case .ambiguous(let candidates):
+                return .requiresClarification(question: resolver.clarificationQuestion(for: "product", candidates: candidates))
+            case .missing, .creatable:
+                return .invalid(reason: "No product named \(existingName) was found.")
+            }
+            if let newName, isBlank(newName) { return .invalid(reason: "New product name cannot be empty.") }
+            if let newName,
+               let existingIndex = productIndex(matching: newName),
+               products[existingIndex].name.caseInsensitiveCompare(existingName) != .orderedSame {
+                return .invalid(reason: "A product named \(newName) already exists.")
+            }
+
+        case .deleteProduct(let name):
+            switch resolver.product(named: name, allowCreate: false) {
+            case .resolved:
+                break
+            case .ambiguous(let candidates):
+                return .requiresClarification(question: resolver.clarificationQuestion(for: "product", candidates: candidates))
+            case .missing, .creatable:
+                return .invalid(reason: "No product named \(name) was found.")
+            }
+
+        case .mergeProducts(let sourceProductName, let targetProductName):
+            if sourceProductName.caseInsensitiveCompare(targetProductName) == .orderedSame { return .invalid(reason: "Cannot merge a product into itself.") }
+            switch resolver.product(named: sourceProductName, allowCreate: false) {
+            case .resolved:
+                break
+            case .ambiguous(let candidates):
+                return .requiresClarification(question: resolver.clarificationQuestion(for: "source product", candidates: candidates))
+            case .missing, .creatable:
+                return .invalid(reason: "No product named \(sourceProductName) was found.")
+            }
+            switch resolver.product(named: targetProductName, allowCreate: false) {
+            case .resolved:
+                break
+            case .ambiguous(let candidates):
+                return .requiresClarification(question: resolver.clarificationQuestion(for: "target product", candidates: candidates))
+            case .missing, .creatable:
+                return .invalid(reason: "No product named \(targetProductName) was found.")
+            }
+
+        case .addProductAlias(let productName, let alias):
+            guard let productIndex = productIndex(matching: productName) else {
+                if case .ambiguous(let candidates) = resolver.product(named: productName, allowCreate: false) {
+                    return .requiresClarification(question: resolver.clarificationQuestion(for: "product", candidates: candidates))
+                }
+                return .invalid(reason: "No product named \(productName) was found.")
+            }
+            if isBlank(alias) { return .invalid(reason: "Alias cannot be empty.") }
+            if products[productIndex].aliases.contains(where: { $0.caseInsensitiveCompare(alias) == .orderedSame }) {
+                return .invalid(reason: "\(alias) is already an alias for \(productName).")
+            }
+
+        case .removeProductAlias(let productName, let alias):
+            guard let productIndex = productIndex(matching: productName) else {
+                if case .ambiguous(let candidates) = resolver.product(named: productName, allowCreate: false) {
+                    return .requiresClarification(question: resolver.clarificationQuestion(for: "product", candidates: candidates))
+                }
+                return .invalid(reason: "No product named \(productName) was found.")
+            }
+            if !products[productIndex].aliases.contains(where: { $0.caseInsensitiveCompare(alias) == .orderedSame }) {
+                return .invalid(reason: "\(alias) is not saved as an alias for \(productName).")
+            }
+
+        case .setProductBarcode(let productName, let barcode):
+            if case .ambiguous(let candidates) = resolver.product(named: productName, allowCreate: false) {
+                return .requiresClarification(question: resolver.clarificationQuestion(for: "product", candidates: candidates))
+            }
+            if productIndex(matching: productName) == nil { return .invalid(reason: "No product named \(productName) was found.") }
+            if isBlank(barcode) { return .invalid(reason: "Barcode cannot be empty.") }
+
+        case .createRecipe(let title, let servings):
+            if isBlank(title) { return .invalid(reason: "Recipe title cannot be empty.") }
+            if servings <= 0 { return .invalid(reason: "Recipe servings must be greater than zero.") }
+            switch resolver.recipe(named: title, allowCreate: true) {
+            case .resolved:
+                return .invalid(reason: "A recipe named \(title) already exists.")
+            case .ambiguous(let candidates):
+                return .requiresClarification(question: resolver.clarificationQuestion(for: "recipe", candidates: candidates))
+            case .missing, .creatable:
+                break
+            }
+
+        case .updateRecipe(let existingTitle, let newTitle, let description, let servings):
+            switch resolver.recipe(named: existingTitle, allowCreate: false) {
+            case .resolved:
+                break
+            case .ambiguous(let candidates):
+                return .requiresClarification(question: resolver.clarificationQuestion(for: "recipe", candidates: candidates))
+            case .missing, .creatable:
+                return .invalid(reason: "No recipe named \(existingTitle) was found.")
+            }
+            if newTitle == nil && description == nil && servings == nil { return .invalid(reason: "Recipe update needs a new title, description, or servings value.") }
+            if let newTitle, isBlank(newTitle) { return .invalid(reason: "New recipe title cannot be empty.") }
+            if let newTitle,
+               let existingIndex = recipeIndex(matching: newTitle),
+               recipes[existingIndex].title.caseInsensitiveCompare(existingTitle) != .orderedSame {
+                return .invalid(reason: "A recipe named \(newTitle) already exists.")
+            }
+            if let servings, servings <= 0 { return .invalid(reason: "Recipe servings must be greater than zero.") }
+
+        case .deleteRecipe(let title):
+            switch resolver.recipe(named: title, allowCreate: false) {
+            case .resolved:
+                break
+            case .ambiguous(let candidates):
+                return .requiresClarification(question: resolver.clarificationQuestion(for: "recipe", candidates: candidates))
+            case .missing, .creatable:
+                return .invalid(reason: "No recipe named \(title) was found.")
+            }
+
+        case .setMealPlanSlot(let date, let mealType, let recipeTitle, let freeformText, let isEatingOut, _):
+            if isBlank(mealType) { return .invalid(reason: "Meal plan slot needs a meal type.") }
+            if dateIsTooFarInPast(date) { return .invalid(reason: "Meal plan date is too far in the past.") }
+            if let recipeTitle {
+                if isBlank(recipeTitle) { return .invalid(reason: "Recipe title cannot be empty.") }
+                switch resolver.recipe(named: recipeTitle, allowCreate: false) {
+                case .resolved:
+                    break
+                case .ambiguous(let candidates):
+                    return .requiresClarification(question: resolver.clarificationQuestion(for: "recipe", candidates: candidates))
+                case .missing, .creatable:
+                    return .invalid(reason: "No recipe named \(recipeTitle) was found.")
+                }
+            }
+            if recipeTitle == nil && !isEatingOut && isBlank(freeformText ?? "") { return .invalid(reason: "Meal plan slot needs a recipe, freeform meal, or eating-out marker.") }
+
+        case .removeMealPlanSlot(let date, let mealType):
+            if isBlank(mealType) { return .invalid(reason: "Removing a meal plan slot needs a meal type.") }
+            if !mealPlanSlotExists(date: date, mealTypeRaw: mealType) { return .invalid(reason: "No planned \(mealType) was found for that date.") }
+
+        case .buildShoppingListFromMealPlan(let requestedWeekStartDate, _):
+            let resolvedWeekStart = weekStartDate(for: requestedWeekStartDate ?? Date())
+            let days = (0..<7).compactMap { Calendar.mealPlanCalendar.date(byAdding: .day, value: $0, to: resolvedWeekStart) }
+            let hasRecipeSlot = mealPlanSlots(on: days).contains { slot in
+                if case .recipe = slot.content { return true }
+                return false
+            }
+            if !hasRecipeSlot { return .invalid(reason: "No recipe meals were found for that week.") }
+
+        case .createMatkasseBox(let provider, let deliveryWeek, let numberOfMeals, let servingsPerMeal, let price, _):
+            if isBlank(provider) { return .invalid(reason: "Matkasse provider cannot be empty.") }
+            if let deliveryWeek, dateIsTooFarInPast(deliveryWeek) { return .invalid(reason: "Matkasse delivery week is too far in the past.") }
+            if let numberOfMeals, numberOfMeals <= 0 { return .invalid(reason: "Number of meals must be greater than zero.") }
+            if let numberOfMeals, numberOfMeals > 21 { return .invalid(reason: "Number of meals is outside the expected range.") }
+            if let servingsPerMeal, servingsPerMeal <= 0 { return .invalid(reason: "Servings per meal must be greater than zero.") }
+            if let servingsPerMeal, servingsPerMeal > 12 { return .invalid(reason: "Servings per meal is outside the expected range.") }
+            if let price, price <= 0 { return .invalid(reason: "Matkasse price must be greater than zero.") }
+            if let price, price > Decimal(50_000) { return .invalid(reason: "Matkasse price is outside the expected range.") }
+
+        case .updateMatkasseBox(let existingProvider, let newProvider, let deliveryWeek, let numberOfMeals, let servingsPerMeal, let price, _):
+            switch resolver.matkasseBox(provider: existingProvider, allowCreate: false) {
+            case .resolved:
+                break
+            case .ambiguous(let candidates):
+                return .requiresClarification(question: resolver.clarificationQuestion(for: "matkasse box", candidates: candidates))
+            case .missing, .creatable:
+                return .invalid(reason: "No matkasse box from \(existingProvider) was found.")
+            }
+            if newProvider == nil && deliveryWeek == nil && numberOfMeals == nil && servingsPerMeal == nil && price == nil { return .invalid(reason: "Matkasse update needs at least one changed value.") }
+            if let newProvider, isBlank(newProvider) { return .invalid(reason: "New provider name cannot be empty.") }
+            if let newProvider,
+               matkasseBox(matchingProvider: newProvider) != nil,
+               newProvider.caseInsensitiveCompare(existingProvider) != .orderedSame {
+                return .invalid(reason: "A matkasse box from \(newProvider) already exists.")
+            }
+            if let deliveryWeek, dateIsTooFarInPast(deliveryWeek) { return .invalid(reason: "Matkasse delivery week is too far in the past.") }
+            if let numberOfMeals, numberOfMeals <= 0 { return .invalid(reason: "Number of meals must be greater than zero.") }
+            if let numberOfMeals, numberOfMeals > 21 { return .invalid(reason: "Number of meals is outside the expected range.") }
+            if let servingsPerMeal, servingsPerMeal <= 0 { return .invalid(reason: "Servings per meal must be greater than zero.") }
+            if let servingsPerMeal, servingsPerMeal > 12 { return .invalid(reason: "Servings per meal is outside the expected range.") }
+            if let price, price <= 0 { return .invalid(reason: "Matkasse price must be greater than zero.") }
+            if let price, price > Decimal(50_000) { return .invalid(reason: "Matkasse price is outside the expected range.") }
+
+        case .deleteMatkasseBox(let provider):
+            switch resolver.matkasseBox(provider: provider, allowCreate: false) {
+            case .resolved:
+                break
+            case .ambiguous(let candidates):
+                return .requiresClarification(question: resolver.clarificationQuestion(for: "matkasse box", candidates: candidates))
+            case .missing, .creatable:
+                return .invalid(reason: "No matkasse box from \(provider) was found.")
+            }
+
+        case .addMatkasseMeal(let boxProvider, let mealTitle):
+            let box: MatkasseBox
+            switch resolver.matkasseBox(provider: boxProvider, allowCreate: false) {
+            case .resolved(let resolvedBox):
+                box = resolvedBox
+            case .ambiguous(let candidates):
+                return .requiresClarification(question: resolver.clarificationQuestion(for: "matkasse box", candidates: candidates))
+            case .missing, .creatable:
+                return .invalid(reason: "No matkasse box from \(boxProvider) was found.")
+            }
+            if isBlank(mealTitle) { return .invalid(reason: "Matkasse meal title cannot be empty.") }
+            if box.includedMeals.contains(where: { $0.title.caseInsensitiveCompare(mealTitle.trimmingCharacters(in: .whitespacesAndNewlines)) == .orderedSame }) {
+                return .invalid(reason: "\(mealTitle) is already in \(boxProvider).")
+            }
+
+        case .removeMatkasseMeal(let boxProvider, let mealTitle):
+            let box: MatkasseBox
+            switch resolver.matkasseBox(provider: boxProvider, allowCreate: false) {
+            case .resolved(let resolvedBox):
+                box = resolvedBox
+            case .ambiguous(let candidates):
+                return .requiresClarification(question: resolver.clarificationQuestion(for: "matkasse box", candidates: candidates))
+            case .missing, .creatable:
+                return .invalid(reason: "No matkasse box from \(boxProvider) was found.")
+            }
+            if !box.includedMeals.contains(where: { $0.title.caseInsensitiveCompare(mealTitle.trimmingCharacters(in: .whitespacesAndNewlines)) == .orderedSame }) {
+                return .invalid(reason: "No meal named \(mealTitle) was found in \(boxProvider).")
+            }
+
+        case .createStore(let chainName, let branchName, _, _):
+            if isBlank(chainName) { return .invalid(reason: "Store needs a chain name.") }
+            if isBlank(branchName) { return .invalid(reason: "Store needs a branch name.") }
+            if branches.contains(where: { $0.chainName.caseInsensitiveCompare(chainName.trimmingCharacters(in: .whitespacesAndNewlines)) == .orderedSame && $0.name.caseInsensitiveCompare(branchName.trimmingCharacters(in: .whitespacesAndNewlines)) == .orderedSame }) {
+                return .invalid(reason: "That store branch already exists.")
+            }
+
+        case .updateStore(let existingStoreName, let chainName, let branchName, let address, let isEnabled):
+            let existingBranch: StoreBranch
+            switch resolver.storeBranch(named: existingStoreName, allowCreate: false) {
+            case .resolved(let resolvedBranch):
+                existingBranch = resolvedBranch
+            case .ambiguous(let candidates):
+                return .requiresClarification(question: resolver.clarificationQuestion(for: "store branch", candidates: candidates))
+            case .missing, .creatable:
+                return .invalid(reason: "No store branch named \(existingStoreName) was found.")
+            }
+            if chainName == nil && branchName == nil && address == nil && isEnabled == nil { return .invalid(reason: "Store update needs at least one changed value.") }
+            if let chainName, isBlank(chainName) { return .invalid(reason: "Chain name cannot be empty.") }
+            if let branchName, isBlank(branchName) { return .invalid(reason: "Branch name cannot be empty.") }
+            let targetChain = chainName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? existingBranch.chainName
+            let targetBranch = branchName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? existingBranch.name
+            if branches.contains(where: { branch in
+                branch.id != existingBranch.id &&
+                branch.chainName.caseInsensitiveCompare(targetChain) == .orderedSame &&
+                branch.name.caseInsensitiveCompare(targetBranch) == .orderedSame
+            }) {
+                return .invalid(reason: "That store branch already exists.")
+            }
+
+        case .deleteStore(let storeName):
+            switch resolver.storeBranch(named: storeName, allowCreate: false) {
+            case .resolved:
+                break
+            case .ambiguous(let candidates):
+                return .requiresClarification(question: resolver.clarificationQuestion(for: "store branch", candidates: candidates))
+            case .missing, .creatable:
+                return .invalid(reason: "No store branch named \(storeName) was found.")
+            }
+
+        case .setStoreEnabled(let storeName, let isEnabled):
+            switch resolver.storeBranch(named: storeName, allowCreate: false) {
+            case .resolved(let branch):
+                if branch.isEnabled == isEnabled {
+                    return .invalid(reason: "Store branch is already \(isEnabled ? "enabled" : "disabled").")
+                }
+            case .ambiguous(let candidates):
+                return .requiresClarification(question: resolver.clarificationQuestion(for: "store branch", candidates: candidates))
+            case .missing, .creatable:
+                return .invalid(reason: "No store branch named \(storeName) was found.")
+            }
+
+        case .createMemory(let summary, let category, _, let sensitivityLevel):
+            if isBlank(summary) { return .invalid(reason: "Memory summary cannot be empty.") }
+            if case .ambiguous(let candidates) = resolver.memory(matching: summary) {
+                return .requiresClarification(question: resolver.clarificationQuestion(for: "memory", candidates: candidates))
+            }
+            if isDuplicateMemory(summary: summary, category: category) { return .invalid(reason: "A similar memory is already saved.") }
+            if sensitivityLevel != .standard { return .warning(message: "Sensitive memories require careful review before saving.") }
+
+        case .changeAppSetting(let key, let value):
+            return validateSettingChange(key: key, value: value)
+
+        case .generic:
+            return .invalid(reason: "Unsupported AI action.")
+        }
+
+        return nil
+    }
+
+    private func actionTypeMatchesPayload(_ action: ProposedAction) -> Bool {
+        switch action.payload {
+        case .createProduct:
+            return action.type == .createProduct
+        case .updateProduct:
+            return action.type == .updateProduct
+        case .deleteProduct:
+            return action.type == .deleteProduct
+        case .mergeProducts:
+            return action.type == .mergeProducts
+        case .createPriceObservation:
+            return action.type == .createPriceObservation
+        case .updatePriceObservation:
+            return action.type == .updatePriceObservation
+        case .deletePriceObservation:
+            return action.type == .deletePriceObservation
+        case .confirmPriceObservation:
+            return action.type == .confirmPriceObservation
+        case .flagCommunityPrice:
+            return action.type == .flagCommunityPrice
+        case .addProductAlias:
+            return action.type == .addProductAlias
+        case .removeProductAlias:
+            return action.type == .removeProductAlias
+        case .setProductBarcode:
+            return action.type == .setProductBarcode
+        case .addShoppingListItem:
+            return action.type == .addShoppingListItem
+        case .createShoppingList:
+            return action.type == .createShoppingList
+        case .updateShoppingList:
+            return action.type == .updateShoppingList
+        case .deleteShoppingList:
+            return action.type == .deleteShoppingList
+        case .updateShoppingListItem:
+            return action.type == .updateShoppingListItem
+        case .completeShoppingListItem:
+            return action.type == .completeShoppingListItem
+        case .removeShoppingListItem:
+            return action.type == .removeShoppingListItem
+        case .setShoppingListStatus:
+            return action.type == .setShoppingListStatus
+        case .optimizeShoppingList:
+            return action.type == .optimizeShoppingList
+        case .moveShoppingListItem:
+            return action.type == .moveShoppingListItem
+        case .substituteShoppingListItem:
+            return action.type == .substituteShoppingListItem
+        case .addRecipeToShoppingList:
+            return action.type == .addRecipeToShoppingList
+        case .createStore:
+            return action.type == .createStore
+        case .updateStore:
+            return action.type == .updateStore
+        case .deleteStore:
+            return action.type == .deleteStore
+        case .setStoreEnabled(_, let isEnabled):
+            return isEnabled ? action.type == .enableStore : action.type == .disableStore
+        case .createMemory:
+            return action.type == .createMemory
+        case .changeAppSetting:
+            return action.type == .changeAppSetting
+        case .createRecipe:
+            return action.type == .createRecipe
+        case .updateRecipe:
+            return action.type == .updateRecipe
+        case .deleteRecipe:
+            return action.type == .deleteRecipe
+        case .setMealPlanSlot:
+            return action.type == .setMealPlanSlot
+        case .removeMealPlanSlot:
+            return action.type == .removeMealPlanSlot
+        case .buildShoppingListFromMealPlan:
+            return action.type == .buildShoppingListFromMealPlan
+        case .createMatkasseBox:
+            return action.type == .createMatkasseBox
+        case .updateMatkasseBox:
+            return action.type == .updateMatkasseBox
+        case .deleteMatkasseBox:
+            return action.type == .deleteMatkasseBox
+        case .addMatkasseMeal:
+            return action.type == .addMatkasseMeal
+        case .removeMatkasseMeal:
+            return action.type == .removeMatkasseMeal
+        case .generic:
+            return true
+        }
+    }
+
+    private func validateSettingChange(key: String, value: String) -> ValidationResult? {
+        let normalizedKey = key.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedValue = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedKey.isEmpty, !normalizedValue.isEmpty else {
+            return .invalid(reason: "Setting changes need a key and value.")
+        }
+
+        switch normalizedKey {
+        case "cheapestDefinition":
+            if CheapestDefinition(rawValue: normalizedValue) == nil {
+                return .invalid(reason: "Unknown cheapest strategy: \(normalizedValue).")
+            }
+        case "maxStoreCount":
+            guard let count = Int(normalizedValue), (1...5).contains(count) else {
+                return .invalid(reason: "Maximum store count must be a number from 1 to 5.")
+            }
+        case "minimumSavings", "travelCostPerKm", "fixedStoreVisitCost":
+            guard let number = Decimal(string: normalizedValue.replacingOccurrences(of: ",", with: ".")), number >= 0 else {
+                return .invalid(reason: "\(normalizedKey) must be a non-negative number.")
+            }
+        case "communityPricingEnabled":
+            if Bool(normalizedValue.lowercased()) == nil {
+                return .invalid(reason: "Community pricing must be true or false.")
+            }
+            return .warning(message: "Community pricing changes affect whether your price observations may be queued for sharing.")
+        default:
+            return .invalid(reason: "Unknown app setting: \(key).")
+        }
+
+        return nil
     }
 
     private func permissionTarget(for type: ProposedActionType) -> (area: AIPermissionArea, operation: AIPermissionOperation) {
@@ -967,6 +1624,45 @@ class AppStore {
     private func recipeIndex(matching title: String) -> Int? {
         let target = title.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         return recipes.firstIndex { $0.title.lowercased() == target }
+    }
+
+    private func isBlank(_ value: String) -> Bool {
+        value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private func mealPlanSlotExists(date: Date, mealTypeRaw: String) -> Bool {
+        let mealType = mealType(fromRawValue: mealTypeRaw)
+        let weekStart = weekStartDate(for: date)
+        guard let plan = mealPlan(forWeekStartDate: weekStart) else { return false }
+        return plan.slots.contains {
+            Calendar.mealPlanCalendar.isDate($0.date, inSameDayAs: date) && $0.mealType == mealType
+        }
+    }
+
+    private func matkasseBox(matchingProvider provider: String) -> MatkasseBox? {
+        let target = provider.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return matkasseBoxes.first { $0.provider.lowercased() == target }
+    }
+
+    private func communityObservationExists(productName: String, storeBranchName: String?) -> Bool {
+        let targetProduct = productName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let targetStore = storeBranchName?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return priceObservations.contains { observation in
+            guard observation.source == .community,
+                  observation.productName.lowercased() == targetProduct else { return false }
+            guard let targetStore, !targetStore.isEmpty else { return true }
+            return observation.storeBranchName.lowercased().contains(targetStore)
+        }
+    }
+
+    private func dateIsTooFarInFuture(_ date: Date) -> Bool {
+        let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()
+        return date > tomorrow
+    }
+
+    private func dateIsTooFarInPast(_ date: Date) -> Bool {
+        let oneYearAgo = Calendar.current.date(byAdding: .year, value: -1, to: Date()) ?? Date.distantPast
+        return date < oneYearAgo
     }
 
     /// Maps a chat-provided meal-type string ("Breakfast", "dinner", ...)

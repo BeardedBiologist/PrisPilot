@@ -25,19 +25,23 @@ final class PrisPilotUITests: XCTestCase {
     @MainActor
     func testExample() throws {
         // UI tests must launch the application that they test.
-        let app = XCUIApplication()
+        let app = makeTestApp()
         app.launch()
-
-        // Use XCTAssert and related functions to verify your tests produce the correct results.
-        // XCUIAutomation Documentation
-        // https://developer.apple.com/documentation/xcuiautomation
+        XCTAssertTrue(app.buttons["Chat"].waitForExistence(timeout: 10))
+        app.terminate()
     }
 
     @MainActor
     func testLaunchPerformance() throws {
         // This measures how long it takes to launch your application.
         measure(metrics: [XCTApplicationLaunchMetric()]) {
-            XCUIApplication().launch()
+            makeTestApp().launch()
         }
+    }
+
+    private func makeTestApp() -> XCUIApplication {
+        let app = XCUIApplication()
+        app.launchArguments.append("-PrisPilotUITestsSkipOnboarding")
+        return app
     }
 }

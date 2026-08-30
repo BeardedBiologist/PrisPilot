@@ -25,6 +25,12 @@
 		C48222F430437DE20007F475 /* ShoppingStatsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C48222F330437DE20007F475 /* ShoppingStatsView.swift */; };
 		C48222F630437E170007F475 /* PricesStatsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C48222F530437E170007F475 /* PricesStatsView.swift */; };
 		C48222F830447FE60007F475 /* Chat_AI_Experience_Improvement_Plan.md in Resources */ = {isa = PBXBuildFile; fileRef = C48222F730447FE60007F475 /* Chat_AI_Experience_Improvement_Plan.md */; };
+		C48222FA3044867F0007F475 /* Chat_AI_Phased_Execution_Plan.md in Resources */ = {isa = PBXBuildFile; fileRef = C48222F93044867F0007F475 /* Chat_AI_Phased_Execution_Plan.md */; };
+		C48222FC304486C70007F475 /* Chat_AI_Phase_Log.md in Resources */ = {isa = PBXBuildFile; fileRef = C48222FB304486C70007F475 /* Chat_AI_Phase_Log.md */; };
+		C48222FE30448A9C0007F475 /* AIContextBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = C48222FD30448A9C0007F475 /* AIContextBuilder.swift */; };
+		C482230030448B690007F475 /* AIEntityResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = C48222FF30448B690007F475 /* AIEntityResolver.swift */; };
+		C482230230448D100007F475 /* AIIntentModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = C482230130448D100007F475 /* AIIntentModels.swift */; };
+		C482230430448D210007F475 /* AIActionPlanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = C482230330448D210007F475 /* AIActionPlanner.swift */; };
 		C4CCD1773037534300157B4E /* AppModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4CCD1763037534300157B4E /* AppModels.swift */; };
 		C4CCD1793037535000157B4E /* AITypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4CCD1783037535000157B4E /* AITypes.swift */; };
 		C4CCD17B3037536B00157B4E /* ProposedAction.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4CCD17A3037536B00157B4E /* ProposedAction.swift */; };
@@ -86,6 +92,12 @@
 		C48222F330437DE20007F475 /* ShoppingStatsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShoppingStatsView.swift; sourceTree = "<group>"; };
 		C48222F530437E170007F475 /* PricesStatsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PricesStatsView.swift; sourceTree = "<group>"; };
 		C48222F730447FE60007F475 /* Chat_AI_Experience_Improvement_Plan.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = Chat_AI_Experience_Improvement_Plan.md; sourceTree = "<group>"; };
+		C48222F93044867F0007F475 /* Chat_AI_Phased_Execution_Plan.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = Chat_AI_Phased_Execution_Plan.md; sourceTree = "<group>"; };
+		C48222FB304486C70007F475 /* Chat_AI_Phase_Log.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = Chat_AI_Phase_Log.md; sourceTree = "<group>"; };
+		C48222FD30448A9C0007F475 /* AIContextBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIContextBuilder.swift; sourceTree = "<group>"; };
+		C48222FF30448B690007F475 /* AIEntityResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIEntityResolver.swift; sourceTree = "<group>"; };
+		C482230130448D100007F475 /* AIIntentModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIIntentModels.swift; sourceTree = "<group>"; };
+		C482230330448D210007F475 /* AIActionPlanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIActionPlanner.swift; sourceTree = "<group>"; };
 		C4ACBAF930374FA900D1D068 /* PrisPilot.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PrisPilot.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		C4ACBB0830374FAC00D1D068 /* PrisPilotTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PrisPilotTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		C4ACBB1230374FAC00D1D068 /* PrisPilotUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PrisPilotUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -192,6 +204,8 @@
 				C4D8789A3037919E002CD76D /* Features */,
 				C473BA2130386BC100C67296 /* BUILD_STATUS.md */,
 				C48222F730447FE60007F475 /* Chat_AI_Experience_Improvement_Plan.md */,
+				C48222F93044867F0007F475 /* Chat_AI_Phased_Execution_Plan.md */,
+				C48222FB304486C70007F475 /* Chat_AI_Phase_Log.md */,
 			);
 			sourceTree = "<group>";
 		};
@@ -223,6 +237,7 @@
 				C4CCD180303753AD00157B4E /* ChatModels.swift */,
 				C4CCD1983037572800157B4E /* GeminiAPITypes.swift */,
 				C473BA1B3038622200C67296 /* AuthModels.swift */,
+				C482230130448D100007F475 /* AIIntentModels.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -246,6 +261,9 @@
 				C4CCD19C3037583D00157B4E /* APIKeys.swift */,
 				C44DE10D303E15310082FD4C /* AIScopePolicy.swift */,
 				C44DE1D0303E315B0082FD4C /* SpeechInputService.swift */,
+				C48222FD30448A9C0007F475 /* AIContextBuilder.swift */,
+				C48222FF30448B690007F475 /* AIEntityResolver.swift */,
+				C482230330448D210007F475 /* AIActionPlanner.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -450,6 +468,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				C473BA2230386BC100C67296 /* BUILD_STATUS.md in Resources */,
+				C48222FA3044867F0007F475 /* Chat_AI_Phased_Execution_Plan.md in Resources */,
+				C48222FC304486C70007F475 /* Chat_AI_Phase_Log.md in Resources */,
 				C48222F830447FE60007F475 /* Chat_AI_Experience_Improvement_Plan.md in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -484,6 +504,7 @@
 				C44DE1D1303E315B0082FD4C /* SpeechInputService.swift in Sources */,
 				C4CCD187303753E700157B4E /* MessageBubbleView.swift in Sources */,
 				C4CCD1973037571D00157B4E /* KeychainService.swift in Sources */,
+				C482230230448D100007F475 /* AIIntentModels.swift in Sources */,
 				C473BA203038624500C67296 /* AccountView.swift in Sources */,
 				C44DE10E303E15310082FD4C /* AIScopePolicy.swift in Sources */,
 				C4CCD1993037572800157B4E /* GeminiAPITypes.swift in Sources */,
@@ -491,7 +512,9 @@
 				C4CCD18D3037541100157B4E /* ShoppingView.swift in Sources */,
 				8C431DAC4E0B91AE06ACF959 /* ShoppingOverviewComponents.swift in Sources */,
 				D30E3B14B0571AEC0A255492 /* ShoppingListDetailView.swift in Sources */,
+				C482230030448B690007F475 /* AIEntityResolver.swift in Sources */,
 				8A302494294082FC58A62EA8 /* InStoreModeView.swift in Sources */,
+				C48222FE30448A9C0007F475 /* AIContextBuilder.swift in Sources */,
 				4B95E991C60E585BAE63B2F8 /* StoreDetailView.swift in Sources */,
 				0A8DC2F11B3DF7BEC3A39995 /* MealPlanView.swift in Sources */,
 				7A0DD52DA9E23ED646286268 /* MatkasseView.swift in Sources */,
@@ -512,6 +535,7 @@
 				C45E009230377ABD0021D7F2 /* OnboardingFlow.swift in Sources */,
 				C4CCD18F3037541E00157B4E /* PricesView.swift in Sources */,
 				C4CCD19B3037575800157B4E /* GeminiAIService.swift in Sources */,
+				C482230430448D210007F475 /* AIActionPlanner.swift in Sources */,
 				C4CCD183303753C700157B4E /* ChatViewModel.swift in Sources */,
 				C4CCD18B3037540300157B4E /* ActivityTagView.swift in Sources */,
 				C4CCD17F303753A700157B4E /* AppStore.swift in Sources */,

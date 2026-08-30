@@ -102,6 +102,11 @@ struct RootTabView: View {
             .environment(store)
         }
         .onAppear {
+            if ProcessInfo.processInfo.arguments.contains("-PrisPilotUITestsSkipOnboarding") {
+                store.settings.onboardingCompleted = true
+                showOnboarding = false
+            }
+
             store.ensureDefaultChatSession()
             if !store.settings.onboardingCompleted {
                 if store.resumeAIOnboardingChatIfAvailable() {

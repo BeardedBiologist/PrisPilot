@@ -151,6 +151,15 @@ enum ProposedActionType: String {
          .removeShoppingListItem, .deleteRecipe, .removeMealPlanSlot, .deleteStore, .deleteMemory,
          .deleteMatkasseBox, .removeMatkasseMeal].contains(self)
     }
+
+    var expectsAffectedRecordIDs: Bool {
+        switch self {
+        case .setMealPlanSlot, .removeMealPlanSlot, .changeAppSetting:
+            return false
+        default:
+            return true
+        }
+    }
 }
 
 // MARK: - Action Payload
@@ -214,7 +223,7 @@ enum RiskLevel {
     }
 }
 
-enum ExecutionStatus {
+enum ExecutionStatus: Equatable {
     case pending, approved, rejected, executing, completed, failed
 
     var isTerminal: Bool {
@@ -229,10 +238,22 @@ enum ValidationResult {
     case valid
     case invalid(reason: String)
     case warning(message: String)
+    case requiresClarification(question: String)
 
     var isValid: Bool {
-        if case .invalid = self { return false }
-        return true
+        switch self {
+        case .valid, .warning:
+            return true
+        case .invalid, .requiresClarification:
+            return false
+        }
+    }
+
+    var clarificationQuestion: String? {
+        if case .requiresClarification(let question) = self {
+            return question
+        }
+        return nil
     }
 }
 
