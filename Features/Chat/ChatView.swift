@@ -251,14 +251,13 @@ struct ChatView: View {
         }
         .padding(.horizontal, 14)
         .padding(.top, 8)
-        .padding(.bottom, 8)
+        .padding(.bottom, 8 + floatingTabBarInset)
         .background(.regularMaterial)
         .overlay(alignment: .top) {
             Rectangle()
                 .fill(Color.primary.opacity(0.08))
                 .frame(height: 0.5)
         }
-        .padding(.bottom, floatingTabBarInset)
     }
 
     private var canSend: Bool {

@@ -11,6 +11,8 @@ struct RootTabView: View {
     @State private var isTabBarVisible = true
     @Namespace private var tabBarNamespace
 
+    private let restorePillYOffset: CGFloat = 34
+
     enum RootTab: Hashable {
         case shopping
         case prices
@@ -86,6 +88,7 @@ struct RootTabView: View {
                 .buttonStyle(.plain)
                 .contentShape(Rectangle())
                 .padding(.bottom, 10)
+                .offset(y: restorePillYOffset)
                 .accessibilityLabel("Show tab bar")
                 .transition(.opacity.combined(with: .scale(scale: 0.92, anchor: .bottom)))
                 .zIndex(3)
@@ -163,7 +166,7 @@ struct RootTabView: View {
                 .zIndex(1)
         }
         .padding(.horizontal, 16)
-        .padding(.bottom, 8)
+        .padding(.bottom, 2)
     }
 
     private func tabButton(_ tab: RootTab, title: String, systemImage: String, selectedImage: String) -> some View {
