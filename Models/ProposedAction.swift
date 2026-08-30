@@ -411,7 +411,7 @@ struct ActivityTag: Identifiable, Codable {
         self.undoSnapshot = action.undoSnapshot
     }
 
-    init(id: UUID, actionType: ProposedActionType, summary: String, timestamp: Date, affectedRecordIDs: [UUID], undoSnapshot: UndoSnapshot? = nil) {
+    init(id: UUID = UUID(), actionType: ProposedActionType, summary: String, timestamp: Date = Date(), affectedRecordIDs: [UUID] = [], undoSnapshot: UndoSnapshot? = nil) {
         self.id = id
         self.actionType = actionType
         self.summary = summary

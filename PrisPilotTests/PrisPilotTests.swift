@@ -103,6 +103,61 @@ struct PrisPilotTests {
         #expect(validationReason(for: store.validate(action)) == "Unsupported AI action.")
     }
 
+    @MainActor
+    @Test func chatHistoryPreservesProposedActionsAndActivityTagsInAIMessages() {
+        let store = AppStore()
+        let sessionID = store.ensureDefaultChatSession()
+        let viewModel = ChatViewModel(appStore: store)
+
+        let userMsg1 = ChatMessage(role: .user, content: .text("Add milk to my list"))
+        let proposedAction = ProposedAction(
+            type: .addShoppingListItem,
+            summary: "Add Milk to Weekly Shop",
+            payload: .addShoppingListItem(listName: "Weekly Shop", productName: "Milk", quantity: "1", notes: nil)
+        )
+        let assistantMsg1 = ChatMessage(role: .assistant, content: .proposedActions(intro: "I can help with that.", actions: [proposedAction], memoryProposals: []))
+        let userMsg2 = ChatMessage(role: .user, content: .text("Now add eggs"))
+
+        store.appendMessage(userMsg1, to: sessionID)
+        store.appendMessage(assistantMsg1, to: sessionID)
+        store.appendMessage(userMsg2, to: sessionID)
+
+        let aiMessages = viewModel.buildAIMessages(for: sessionID)
+
+        #expect(aiMessages.count == 3)
+        #expect(aiMessages[0].role == .user)
+        #expect(aiMessages[0].content == "Add milk to my list")
+
+        #expect(aiMessages[1].role == .assistant)
+        #expect(aiMessages[1].content.contains("I can help with that."))
+        #expect(aiMessages[1].content.contains("[Proposed action: Add Milk to Weekly Shop]"))
+
+        #expect(aiMessages[2].role == .user)
+        #expect(aiMessages[2].content == "Now add eggs")
+    }
+
+    @MainActor
+    @Test func chatHistoryPreservesCompletedActivityTagsInAIMessages() {
+        let store = AppStore()
+        let sessionID = store.ensureDefaultChatSession()
+        let viewModel = ChatViewModel(appStore: store)
+
+        let tag = ActivityTag(
+            actionType: .addShoppingListItem,
+            summary: "Added Milk to Weekly Shop",
+            affectedRecordIDs: []
+        )
+        let assistantMsg = ChatMessage(role: .assistant, content: .activityTags([tag]))
+
+        store.appendMessage(assistantMsg, to: sessionID)
+
+        let aiMessages = viewModel.buildAIMessages(for: sessionID)
+
+        #expect(aiMessages.count == 1)
+        #expect(aiMessages[0].role == .assistant)
+        #expect(aiMessages[0].content.contains("[Completed action: Added Milk to Weekly Shop]"))
+    }
+
     private func validationReason(for result: ValidationResult) -> String? {
         if case .invalid(let reason) = result {
             return reason

@@ -357,12 +357,37 @@ class ChatViewModel {
         }
     }
 
-    private func buildAIMessages(for sessionID: UUID) -> [AIMessage] {
+    func buildAIMessages(for sessionID: UUID) -> [AIMessage] {
         appStore.messages(for: sessionID).compactMap { msg in
-            if case .text(let text) = msg.content {
-                return AIMessage(role: msg.role == .user ? .user : .assistant, content: text)
+            let role: AIMessageRole = (msg.role == .user) ? .user : .assistant
+            switch msg.content {
+            case .text(let text):
+                return AIMessage(role: role, content: text)
+            case .proposedActions(let intro, let actions, let memoryProposals):
+                var parts: [String] = []
+                if let intro = intro, !intro.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    parts.append(intro)
+                }
+                for action in actions {
+                    parts.append("[Proposed action: \(action.summary)]")
+                }
+                for memory in memoryProposals {
+                    parts.append("[Proposed memory: \(memory.memory.summary)]")
+                }
+                let content = parts.joined(separator: "\n")
+                return content.isEmpty ? nil : AIMessage(role: role, content: content)
+            case .activityTags(let tags):
+                var parts: [String] = []
+                for tag in tags {
+                    parts.append("[Completed action: \(tag.summary)]")
+                }
+                let content = parts.joined(separator: "\n")
+                return content.isEmpty ? AIMessage(role: role, content: "[Actions processed]") : AIMessage(role: role, content: content)
+            case .error(let error):
+                return AIMessage(role: role, content: "[Error: \(error.localizedDescription)]")
+            case .onboardingComplete:
+                return AIMessage(role: role, content: "[Onboarding setup completed]")
             }
-            return nil
         }
     }
 

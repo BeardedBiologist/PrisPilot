@@ -354,10 +354,22 @@ final class GeminiAIService: AIService, OnboardingAIService, ReceiptParsingAISer
     }
 
     private func buildContents(from messages: [AIMessage]) -> [[String: Any]] {
-        messages.suffix(20).map { msg in
+        let recentMessages = messages.suffix(20)
+        var coalesced: [(role: String, text: String)] = []
+
+        for msg in recentMessages {
+            let roleStr = msg.role == .user ? "user" : "model"
+            if let lastIndex = coalesced.indices.last, coalesced[lastIndex].role == roleStr {
+                coalesced[lastIndex].text += "\n" + msg.content
+            } else {
+                coalesced.append((role: roleStr, text: msg.content))
+            }
+        }
+
+        return coalesced.map { turn in
             [
-                "role": msg.role == .user ? "user" : "model",
-                "parts": [["text": msg.content]]
+                "role": turn.role,
+                "parts": [["text": turn.text]]
             ]
         }
     }
