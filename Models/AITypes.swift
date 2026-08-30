@@ -204,6 +204,7 @@ struct MemoryProposal: Identifiable, Codable {
 enum AIServiceError: Error, LocalizedError {
     case quotaExhausted
     case offline
+    case timedOut
     case invalidAPIKey
     case invalidResponse
     case permissionDenied
@@ -217,6 +218,8 @@ enum AIServiceError: Error, LocalizedError {
             return "The free AI allowance is temporarily exhausted. Please try again later."
         case .offline:
             return "No internet connection. Manual features are still available."
+        case .timedOut:
+            return "The AI took too long to respond. Try again, or shorten your message if it's very long."
         case .invalidAPIKey:
             return "AI API key is missing or invalid. Please check Settings."
         case .invalidResponse:

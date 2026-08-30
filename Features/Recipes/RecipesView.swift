@@ -208,6 +208,53 @@ struct RecipeDetailView: View {
 
     var body: some View {
         List {
+            // Description / overview
+            if let description = recipe.description {
+                Section {
+                    Text(description)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            // Meta: author, timing, tags
+            let hasMeta = recipe.author != nil || recipe.prepTimeMinutes != nil || recipe.cookTimeMinutes != nil || !recipe.tags.isEmpty
+            if hasMeta {
+                Section {
+                    if let author = recipe.author {
+                        Label(author, systemImage: "person")
+                            .font(.subheadline)
+                    }
+                    if recipe.prepTimeMinutes != nil || recipe.cookTimeMinutes != nil {
+                        HStack(spacing: 16) {
+                            if let prep = recipe.prepTimeMinutes {
+                                Label("\(prep) min prep", systemImage: "clock")
+                                    .font(.subheadline)
+                            }
+                            if let cook = recipe.cookTimeMinutes {
+                                Label("\(cook) min cook", systemImage: "flame")
+                                    .font(.subheadline)
+                            }
+                        }
+                    }
+                    if !recipe.tags.isEmpty {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 6) {
+                                ForEach(recipe.tags, id: \.self) { tag in
+                                    Text(tag)
+                                        .font(.caption.weight(.medium))
+                                        .padding(.horizontal, 10)
+                                        .padding(.vertical, 4)
+                                        .background(.quaternary, in: Capsule())
+                                }
+                            }
+                            .padding(.vertical, 2)
+                        }
+                        .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
+                    }
+                }
+            }
+
             if !recipe.ingredients.isEmpty {
                 Section("Ingredients") {
                     ForEach(recipe.ingredients) { ingredient in

@@ -88,7 +88,7 @@ final class GeminiAIService: AIService, OnboardingAIService, ReceiptParsingAISer
                             try? await Task.sleep(for: retryDelay)
                             continue
                         }
-                    case .quotaExhausted, .invalidAPIKey, .offline, .invalidResponse, .permissionDenied, .unknown:
+                    case .quotaExhausted, .invalidAPIKey, .offline, .timedOut, .invalidResponse, .permissionDenied, .unknown:
                         throw error
                     }
                 }
@@ -140,8 +140,16 @@ final class GeminiAIService: AIService, OnboardingAIService, ReceiptParsingAISer
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = body
+        request.timeoutInterval = 120
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response): (Data, URLResponse)
+        do {
+            (data, response) = try await URLSession.shared.data(for: request)
+        } catch let urlError as URLError where urlError.code == .timedOut || urlError.code == .networkConnectionLost {
+            throw AIServiceError.timedOut
+        } catch let urlError as URLError where urlError.code == .notConnectedToInternet || urlError.code == .cannotConnectToHost {
+            throw AIServiceError.offline
+        }
         if let http = response as? HTTPURLResponse {
             switch http.statusCode {
             case 200:
@@ -482,11 +490,17 @@ final class GeminiAIService: AIService, OnboardingAIService, ReceiptParsingAISer
             ),
             makeFn(
                 name: "createRecipe",
-                desc: "Create and save a recipe in PrisPilot. Use this when the user asks to create or save a recipe; include structured ingredients whenever they are stated or reasonably implied by the requested dish.",
+                desc: "Create and save a recipe in PrisPilot. Use this when the user pastes or describes a recipe to save. Extract all available information: title, description (the intro text or notes), servings, structured ingredients, step-by-step instructions, tags (cuisine, meal type, etc.), author, and prep/cook times.",
                 props: [
-                    "title":       strProp("Recipe title"),
-                    "servings":    numProp("Number of servings"),
-                    "ingredients": recipeIngredientsProp()
+                    "title":            strProp("Recipe title"),
+                    "description":      strProp("Recipe intro text, overview, or notes. Include the main description paragraph and any recipe notes at the bottom."),
+                    "servings":         numProp("Number of servings"),
+                    "ingredients":      recipeIngredientsProp(),
+                    "steps":            ["type": "ARRAY", "description": "Cooking instructions, one string per step in order.", "items": ["type": "STRING"]] as [String: Any],
+                    "tags":             ["type": "ARRAY", "description": "Tags like cuisine type, meal category, dietary labels (e.g. Australian, Finger Food, Appetizer).", "items": ["type": "STRING"]] as [String: Any],
+                    "author":           strProp("Recipe author or source, if stated (e.g. 'Nagi | RecipeTin Eats')"),
+                    "prepTimeMinutes":  numProp("Prep time in minutes, if stated"),
+                    "cookTimeMinutes":  numProp("Cook time in minutes, if stated")
                 ],
                 required: ["title", "servings"]
             ),
@@ -1078,12 +1092,20 @@ final class GeminiAIService: AIService, OnboardingAIService, ReceiptParsingAISer
             guard let title = args["title"]?.stringValue else { return .none }
             let servings = args["servings"]?.doubleValue.map { max(1, Int($0)) } ?? 4
             let ingredients = parseRecipeIngredients(args["ingredients"])
+            let descRaw = args["description"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let description: String? = descRaw.isEmpty ? nil : descRaw
+            let steps = args["steps"]?.arrayValue?.compactMap { $0.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty } ?? []
+            let tags = args["tags"]?.arrayValue?.compactMap { $0.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty } ?? []
+            let authorRaw = args["author"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let author: String? = authorRaw.isEmpty ? nil : authorRaw
+            let prepTimeMinutes = args["prepTimeMinutes"]?.doubleValue.map { Int($0) }
+            let cookTimeMinutes = args["cookTimeMinutes"]?.doubleValue.map { Int($0) }
             return .action(ProposedAction(
                 type: .createRecipe,
                 summary: ingredients.isEmpty
                     ? "Create recipe: \(title)"
                     : "Create recipe: \(title) with \(ingredients.count) ingredients",
-                payload: .createRecipe(title: title, servings: servings, ingredients: ingredients),
+                payload: .createRecipe(title: title, description: description, servings: servings, ingredients: ingredients, steps: steps, tags: tags, author: author, prepTimeMinutes: prepTimeMinutes, cookTimeMinutes: cookTimeMinutes),
                 riskLevel: .low
             ))
 

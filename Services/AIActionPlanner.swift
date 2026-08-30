@@ -89,7 +89,7 @@ struct AIActionPlanner {
               reason.contains("No recipe named") else { return false }
 
         return actions.contains { candidate in
-            guard case .createRecipe(let title, _, _) = candidate.payload else { return false }
+            guard case .createRecipe(let title, _, _, _, _, _, _, _, _) = candidate.payload else { return false }
             return title.caseInsensitiveCompare(recipeName) == .orderedSame
         }
     }

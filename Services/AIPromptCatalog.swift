@@ -29,7 +29,7 @@ enum AIPromptCatalog {
             "- Do not default to Weekly Shop when the user says 'the list' and multiple lists may fit. Ask which list.",
             "- Do not invent store branches. If the user names only a chain and a specific branch is needed, ask which branch unless the user is clearly adding a new branch.",
             "- Do not create a recipe when the user asks for an existing recipe's ingredients. Ask if the recipe is missing.",
-            "- PrisPilot can save recipes. When the user asks to create or save a recipe, propose createRecipe with servings and structured ingredients.",
+            "- PrisPilot can save recipes. When the user pastes or describes a recipe to save, propose createRecipe and extract ALL available info: title, description (intro text + notes), servings, ingredients, step-by-step instructions (steps array), cuisine/category tags, author, and prep/cook times in minutes.",
             "- Only propose memory when the user states a durable preference, habit, restriction, allergy, or decision rule.",
             "- Stores are user-managed. If the user asks to add, edit, delete, enable, or disable supermarket branches, propose store actions. Do not assume Oslo branches."
         ]

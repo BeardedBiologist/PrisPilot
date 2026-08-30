@@ -1110,7 +1110,7 @@ class AppStore {
             if productIndex(matching: productName) == nil { return .invalid(reason: "No product named \(productName) was found.") }
             if isBlank(barcode) { return .invalid(reason: "Barcode cannot be empty.") }
 
-        case .createRecipe(let title, let servings, let ingredients):
+        case .createRecipe(let title, _, let servings, let ingredients, _, _, _, _, _):
             if isBlank(title) { return .invalid(reason: "Recipe title cannot be empty.") }
             if servings <= 0 { return .invalid(reason: "Recipe servings must be greater than zero.") }
             for ingredient in ingredients {
@@ -1917,12 +1917,17 @@ class AppStore {
             setProductBarcode(id, barcode: barcode)
             return ActionExecutionResult(ids: [id], undo: snapshot)
 
-        case .createRecipe(let title, let servings, let ingredients):
-            let recipe = Recipe(title: title, servings: servings)
-            var savedRecipe = recipe
-            savedRecipe.ingredients = ingredients
-            recipes.append(savedRecipe)
-            return ActionExecutionResult(ids: [savedRecipe.id])
+        case .createRecipe(let title, let description, let servings, let ingredients, let steps, let tags, let author, let prepTimeMinutes, let cookTimeMinutes):
+            var recipe = Recipe(title: title, servings: servings)
+            recipe.description = description
+            recipe.ingredients = ingredients
+            recipe.steps = steps
+            recipe.tags = tags
+            recipe.author = author
+            recipe.prepTimeMinutes = prepTimeMinutes
+            recipe.cookTimeMinutes = cookTimeMinutes
+            recipes.append(recipe)
+            return ActionExecutionResult(ids: [recipe.id])
 
         case .updateRecipe(let existingTitle, let newTitle, let description, let servings):
             guard let idx = recipeIndex(matching: existingTitle) else { return .empty }

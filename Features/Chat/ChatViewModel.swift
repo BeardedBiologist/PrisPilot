@@ -64,6 +64,12 @@ class ChatViewModel {
             return
         }
 
+        // Parse pasted recipe text locally — no AI call needed, no timeout risk.
+        if let recipeResponse = RecipeTextParser.localRecipeImport(for: text) {
+            handleResponse(recipeResponse, in: sessionID)
+            return
+        }
+
         isSending = true
         isTyping = true
 

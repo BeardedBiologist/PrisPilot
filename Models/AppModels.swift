@@ -521,6 +521,9 @@ struct Recipe: Codable, Identifiable {
     let id: UUID
     var title: String
     var description: String?
+    var author: String?
+    var prepTimeMinutes: Int?
+    var cookTimeMinutes: Int?
     var servings: Int
     var ingredients: [RecipeIngredient]
     var steps: [String]

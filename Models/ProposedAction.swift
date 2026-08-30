@@ -228,7 +228,7 @@ enum ProposedActionPayload: Codable {
     case inviteHouseholdMember(email: String?)
     case updateHouseholdMember(userID: String, displayName: String?, role: HouseholdRole?)
     case changeAppSetting(key: String, value: String)
-    case createRecipe(title: String, servings: Int, ingredients: [RecipeIngredient])
+    case createRecipe(title: String, description: String?, servings: Int, ingredients: [RecipeIngredient], steps: [String], tags: [String], author: String?, prepTimeMinutes: Int?, cookTimeMinutes: Int?)
     case updateRecipe(existingTitle: String, newTitle: String?, description: String?, servings: Int?)
     case deleteRecipe(title: String)
     case setMealPlanSlot(date: Date, mealType: String, recipeTitle: String?, freeformText: String?, isEatingOut: Bool, isLeftover: Bool)

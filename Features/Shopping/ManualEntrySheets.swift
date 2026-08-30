@@ -473,9 +473,13 @@ struct AddRecipeSheet: View {
 
     @State private var title = ""
     @State private var description = ""
+    @State private var author = ""
+    @State private var prepTimeText = ""
+    @State private var cookTimeText = ""
     @State private var servings = 4
     @State private var scope: DataScope = .personal
     @State private var ingredients: [DraftIngredient] = [DraftIngredient()]
+    @State private var steps: [DraftStep] = []
 
     struct DraftIngredient: Identifiable {
         let id = UUID()
@@ -484,13 +488,39 @@ struct AddRecipeSheet: View {
         var unit: MeasurementUnit = .grams
     }
 
+    struct DraftStep: Identifiable {
+        let id = UUID()
+        var text = ""
+    }
+
     var body: some View {
         NavigationStack {
             Form {
                 Section("Recipe") {
                     TextField("Title", text: $title)
-                    TextField("Description (optional)", text: $description)
-                    Stepper("Servings: \(servings)", value: $servings, in: 1...20)
+                    TextField("Description (optional)", text: $description, axis: .vertical)
+                        .lineLimit(3...6)
+                    TextField("Author (optional)", text: $author)
+                    Stepper("Servings: \(servings)", value: $servings, in: 1...50)
+                }
+
+                Section("Timing") {
+                    HStack {
+                        Text("Prep")
+                            .foregroundStyle(.secondary)
+                        TextField("minutes", text: $prepTimeText)
+                            .keyboardType(.numberPad)
+                        Text("min")
+                            .foregroundStyle(.secondary)
+                    }
+                    HStack {
+                        Text("Cook")
+                            .foregroundStyle(.secondary)
+                        TextField("minutes", text: $cookTimeText)
+                            .keyboardType(.numberPad)
+                        Text("min")
+                            .foregroundStyle(.secondary)
+                    }
                 }
 
                 if store.household != nil {
@@ -524,6 +554,23 @@ struct AddRecipeSheet: View {
                         ingredients.append(DraftIngredient())
                     }
                 }
+
+                Section("Instructions") {
+                    ForEach(Array(steps.enumerated()), id: \.element.id) { i, _ in
+                        HStack(alignment: .top, spacing: 8) {
+                            Text("\(i + 1).")
+                                .foregroundStyle(.secondary)
+                                .frame(width: 24, alignment: .trailing)
+                                .padding(.top, 8)
+                            TextField("Step \(i + 1)", text: $steps[i].text, axis: .vertical)
+                                .lineLimit(2...4)
+                        }
+                    }
+                    .onDelete { steps.remove(atOffsets: $0) }
+                    Button("Add step") {
+                        steps.append(DraftStep())
+                    }
+                }
             }
             .formStyle(.grouped)
             .navigationTitle("New Recipe")
@@ -544,12 +591,21 @@ struct AddRecipeSheet: View {
 
     private func saveRecipe() {
         var recipe = Recipe(title: title.trimmingCharacters(in: .whitespaces), servings: servings)
-        if !description.isEmpty { recipe.description = description.trimmingCharacters(in: .whitespaces) }
+        let trimmedDesc = description.trimmingCharacters(in: .whitespaces)
+        if !trimmedDesc.isEmpty { recipe.description = trimmedDesc }
+        let trimmedAuthor = author.trimmingCharacters(in: .whitespaces)
+        if !trimmedAuthor.isEmpty { recipe.author = trimmedAuthor }
+        if let prep = Int(prepTimeText.trimmingCharacters(in: .whitespaces)), prep > 0 { recipe.prepTimeMinutes = prep }
+        if let cook = Int(cookTimeText.trimmingCharacters(in: .whitespaces)), cook > 0 { recipe.cookTimeMinutes = cook }
         recipe.scope = scope
         recipe.ingredients = ingredients.compactMap { draft in
             let name = draft.name.trimmingCharacters(in: .whitespaces)
             guard !name.isEmpty, let qty = Double(draft.quantity.replacingOccurrences(of: ",", with: ".")) else { return nil }
             return RecipeIngredient(productName: name, quantity: qty, unit: draft.unit)
+        }
+        recipe.steps = steps.compactMap { draft in
+            let text = draft.text.trimmingCharacters(in: .whitespaces)
+            return text.isEmpty ? nil : text
         }
         store.recipes.append(recipe)
         store.persistNow()

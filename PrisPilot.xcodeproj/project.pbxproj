@@ -56,6 +56,7 @@
 		C4CCD1A130375A4500157B4E /* ManualEntrySheets.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4CCD1A030375A4500157B4E /* ManualEntrySheets.swift */; };
 		C4CCD1A330375A5E00157B4E /* PriceComparisonView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4CCD1A230375A5E00157B4E /* PriceComparisonView.swift */; };
 		C4CEDC253044C46800558893 /* AIPromptCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4CEDC243044C46800558893 /* AIPromptCatalog.swift */; };
+		C4CEDC273044E14E00558893 /* RecipeTextParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4CEDC263044E14E00558893 /* RecipeTextParser.swift */; };
 		C4D8788F3037897E002CD76D /* PrisPilotApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4D8788D3037897E002CD76D /* PrisPilotApp.swift */; };
 		D30E3B14B0571AEC0A255492 /* ShoppingListDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C78443DD829E9A36C2A01A7B /* ShoppingListDetailView.swift */; };
 /* End PBXBuildFile section */
@@ -129,6 +130,7 @@
 		C4CCD1A030375A4500157B4E /* ManualEntrySheets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManualEntrySheets.swift; sourceTree = "<group>"; };
 		C4CCD1A230375A5E00157B4E /* PriceComparisonView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PriceComparisonView.swift; sourceTree = "<group>"; };
 		C4CEDC243044C46800558893 /* AIPromptCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIPromptCatalog.swift; sourceTree = "<group>"; };
+		C4CEDC263044E14E00558893 /* RecipeTextParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecipeTextParser.swift; sourceTree = "<group>"; };
 		C4D8788D3037897E002CD76D /* PrisPilotApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrisPilotApp.swift; sourceTree = "<group>"; };
 		C78443DD829E9A36C2A01A7B /* ShoppingListDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShoppingListDetailView.swift; sourceTree = "<group>"; };
 		D6F33978FF4323144CC8E191 /* ShoppingOverviewComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShoppingOverviewComponents.swift; sourceTree = "<group>"; };
@@ -269,6 +271,7 @@
 				C48222FF30448B690007F475 /* AIEntityResolver.swift */,
 				C482230330448D210007F475 /* AIActionPlanner.swift */,
 				C4CEDC243044C46800558893 /* AIPromptCatalog.swift */,
+				C4CEDC263044E14E00558893 /* RecipeTextParser.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -534,6 +537,7 @@
 				C4CCD1A330375A5E00157B4E /* PriceComparisonView.swift in Sources */,
 				C4D8788F3037897E002CD76D /* PrisPilotApp.swift in Sources */,
 				C4CCD1773037534300157B4E /* AppModels.swift in Sources */,
+				C4CEDC273044E14E00558893 /* RecipeTextParser.swift in Sources */,
 				C473BA273038848900C67296 /* ReceiptScannerView.swift in Sources */,
 				C4CCD189303753FB00157B4E /* ActionProposalView.swift in Sources */,
 				C45E0094303782730021D7F2 /* SwiftDataPersistence.swift in Sources */,

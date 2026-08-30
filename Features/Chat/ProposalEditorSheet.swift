@@ -31,8 +31,8 @@ struct ProposalEditorSheet: View {
             CreatePriceEditor(productName: product, storeName: store, price: price, quantity: qty, unit: unit, isPromotion: isPromo, date: date, onSave: save)
         case .updatePriceObservation(let product, let store, let price, let qty, let unit):
             UpdatePriceEditor(productName: product, storeName: store ?? "", price: price, quantity: qty, unit: unit, onSave: save)
-        case .createRecipe(let title, let servings, let ingredients):
-            CreateRecipeEditor(title: title, servings: servings, ingredients: ingredients, onSave: save)
+        case .createRecipe(let title, let description, let servings, let ingredients, let steps, let tags, let author, let prepTime, let cookTime):
+            CreateRecipeEditor(title: title, description: description, servings: servings, ingredients: ingredients, steps: steps, tags: tags, author: author, prepTimeMinutes: prepTime, cookTimeMinutes: cookTime, onSave: save)
         case .updateRecipe(let existing, let newTitle, let desc, let servings):
             UpdateRecipeEditor(existingTitle: existing, newTitle: newTitle ?? existing, description: desc ?? "", servings: servings ?? 2, onSave: save)
         case .createShoppingList(let name):
@@ -251,13 +251,25 @@ private struct UpdatePriceEditor: View {
 private struct CreateRecipeEditor: View {
     @State private var title: String
     @State private var servings: Int
+    private let description: String?
     private let ingredients: [RecipeIngredient]
+    private let steps: [String]
+    private let tags: [String]
+    private let author: String?
+    private let prepTimeMinutes: Int?
+    private let cookTimeMinutes: Int?
     let onSave: (ProposedActionPayload, String) -> Void
 
-    init(title: String, servings: Int, ingredients: [RecipeIngredient], onSave: @escaping (ProposedActionPayload, String) -> Void) {
+    init(title: String, description: String?, servings: Int, ingredients: [RecipeIngredient], steps: [String], tags: [String], author: String?, prepTimeMinutes: Int?, cookTimeMinutes: Int?, onSave: @escaping (ProposedActionPayload, String) -> Void) {
         _title = State(initialValue: title)
         _servings = State(initialValue: max(1, servings))
+        self.description = description
         self.ingredients = ingredients
+        self.steps = steps
+        self.tags = tags
+        self.author = author
+        self.prepTimeMinutes = prepTimeMinutes
+        self.cookTimeMinutes = cookTimeMinutes
         self.onSave = onSave
     }
 
@@ -269,12 +281,15 @@ private struct CreateRecipeEditor: View {
                 if !ingredients.isEmpty {
                     LabeledContent("Ingredients", value: "\(ingredients.count)")
                 }
+                if !steps.isEmpty {
+                    LabeledContent("Steps", value: "\(steps.count)")
+                }
             }
         }
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
                 Button("Save") {
-                    onSave(.createRecipe(title: title, servings: servings, ingredients: ingredients), "Create recipe \"\(title)\" (\(servings) servings)")
+                    onSave(.createRecipe(title: title, description: description, servings: servings, ingredients: ingredients, steps: steps, tags: tags, author: author, prepTimeMinutes: prepTimeMinutes, cookTimeMinutes: cookTimeMinutes), "Create recipe \"\(title)\" (\(servings) servings)")
                 }
                 .disabled(title.trimmed.isEmpty)
             }
