@@ -8,6 +8,7 @@ struct RootTabView: View {
     @State private var selectedTab: RootTab = .chat
     @State private var showOnboarding = false
     @State private var measuredTabBarHeight: CGFloat = 100
+    @State private var isTabBarVisible = true
     @Namespace private var tabBarNamespace
 
     enum RootTab: Hashable {
@@ -33,16 +34,62 @@ struct RootTabView: View {
         ZStack(alignment: .bottom) {
             currentTab
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .environment(\.floatingTabBarInset, measuredTabBarHeight)
+                .environment(\.floatingTabBarInset, isTabBarVisible ? measuredTabBarHeight : 0)
+                .environment(\.floatingTabBarVisible, isTabBarVisible)
                 .environment(\.switchToChatTab) { selectTab(.chat) }
                 .environment(\.switchToSettingsTab) { selectTab(.profile) }
+                .environment(\.setTabBarVisible) { visible in
+                    guard isTabBarVisible != visible else { return }
+                    withAnimation(GlassTheme.motionSpring) {
+                        isTabBarVisible = visible
+                    }
+                }
 
             customTabBar
+                .offset(y: isTabBarVisible ? 0 : measuredTabBarHeight + 40)
+                .animation(GlassTheme.motionSpring, value: isTabBarVisible)
+                // When hidden (offset off-screen) the layout frame stays in
+                // place and would block taps destined for the pill below.
+                .allowsHitTesting(isTabBarVisible)
+                .zIndex(isTabBarVisible ? 2 : 0)
+                .gesture(
+                    DragGesture(minimumDistance: 20, coordinateSpace: .local)
+                        .onEnded { value in
+                            if value.translation.height > 20 {
+                                withAnimation(GlassTheme.motionSpring) {
+                                    isTabBarVisible = false
+                                }
+                            }
+                        }
+                )
                 .onGeometryChange(for: CGFloat.self) { proxy in
                     proxy.size.height
                 } action: { newHeight in
                     measuredTabBarHeight = newHeight
                 }
+
+            // Glass pill — exists only when the tab bar is hidden so it
+            // is always tappable without any opacity / allowsHitTesting tricks.
+            if !isTabBarVisible {
+                Button {
+                    withAnimation(GlassTheme.motionSpring) {
+                        isTabBarVisible = true
+                    }
+                } label: {
+                    Image(systemName: "chevron.compact.up")
+                        .font(.callout.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 32)
+                        .padding(.vertical, 8)
+                        .glassEffect(.regular.interactive(), in: Capsule())
+                }
+                .buttonStyle(.plain)
+                .contentShape(Rectangle())
+                .padding(.bottom, 10)
+                .accessibilityLabel("Show tab bar")
+                .transition(.opacity.combined(with: .scale(scale: 0.92, anchor: .bottom)))
+                .zIndex(3)
+            }
         }
         .ignoresSafeArea(.keyboard, edges: .bottom)
         .fullScreenCover(isPresented: $showOnboarding) {
@@ -172,14 +219,23 @@ struct RootTabView: View {
     }
 
     private func selectTab(_ tab: RootTab) {
-        guard tab != selectedTab else { return }
+        guard tab != selectedTab else {
+            if !isTabBarVisible {
+                withAnimation(GlassTheme.motionSpring) {
+                    isTabBarVisible = true
+                }
+            }
+            return
+        }
         guard !reduceMotion else {
             selectedTab = tab
+            isTabBarVisible = true
             return
         }
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
         withAnimation(GlassTheme.motionSpring) {
             selectedTab = tab
+            isTabBarVisible = true
         }
     }
 }

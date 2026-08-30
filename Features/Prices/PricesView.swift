@@ -20,6 +20,7 @@ private enum PriceViewMode: String, CaseIterable {
 struct PricesView: View {
     @Environment(AppStore.self) private var store
     @State private var showAddPrice = false
+    @State private var showPricesStats = false
     @State private var showBarcodeScanner = false
     @State private var showReceiptScanner = false
     @State private var searchText = ""
@@ -134,6 +135,7 @@ struct PricesView: View {
                 }
             }
             .reservesFloatingTabBarSpace()
+            .hideTabBarOnScrollDown()
             .searchable(
                 text: $searchText,
                 placement: .navigationBarDrawer(displayMode: .always),
@@ -143,6 +145,8 @@ struct PricesView: View {
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     HStack {
+                        Button { showPricesStats = true } label: { Image(systemName: "chart.bar.xaxis") }
+                            .accessibilityLabel("Prices stats")
                         Button { showReceiptScanner = true } label: { Image(systemName: "doc.viewfinder") }
                             .accessibilityLabel("Scan receipt")
                         Button { showBarcodeScanner = true } label: { Image(systemName: "barcode.viewfinder") }
@@ -151,6 +155,9 @@ struct PricesView: View {
                             .accessibilityLabel("Add price")
                     }
                 }
+            }
+            .sheet(isPresented: $showPricesStats) {
+                PricesStatsView().environment(store)
             }
             .sheet(isPresented: $showAddPrice) {
                 AddPriceObservationSheet().environment(store)

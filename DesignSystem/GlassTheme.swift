@@ -60,6 +60,80 @@ extension EnvironmentValues {
     /// out to where the value is actually editable instead of duplicating
     /// editable controls in two places.
     @Entry var switchToSettingsTab: () -> Void = {}
+
+    /// Lets any scrollable feature view request that the floating tab bar be
+    /// shown or hidden. RootTabView wires this to its own visibility state;
+    /// defaults to a no-op so previews don't crash.
+    @Entry var setTabBarVisible: (Bool) -> Void = { _ in }
+
+    /// Current visibility of the floating tab bar. Scroll modifiers read this
+    /// so manual reveals from RootTabView don't leave stale local state behind.
+    @Entry var floatingTabBarVisible: Bool = true
+}
+
+private struct HideTabBarOnScrollDown: ViewModifier {
+    @Environment(\.setTabBarVisible) private var setTabBarVisible
+    @Environment(\.floatingTabBarVisible) private var tabBarVisible
+    /// Y offset at the point the last hide/show was triggered (or at the
+    /// point the user reversed direction while visible). Comparing against
+    /// this baseline — rather than the previous frame — prevents the 5pt-
+    /// per-frame accumulation that caused constant flickering.
+    @State private var baselineY: CGFloat = 0
+    @State private var scrollPhase: ScrollPhase = .idle
+
+    private let hideThreshold: CGFloat = 80
+    private let showThreshold: CGFloat = 120
+    private let topRestoreThreshold: CGFloat = 24
+
+    func body(content: Content) -> some View {
+        content
+            .onScrollPhaseChange { _, newPhase, context in
+                scrollPhase = newPhase
+
+                if newPhase == .tracking || newPhase == .interacting || newPhase == .idle {
+                    baselineY = context.geometry.contentOffset.y
+                }
+            }
+            .onScrollGeometryChange(for: CGFloat.self) { geo in
+                geo.contentOffset.y
+            } action: { _, new in
+                // Near top: always restore and reset baseline (handles bouncing).
+                if new < topRestoreThreshold {
+                    if !tabBarVisible {
+                        setTabBarVisible(true)
+                    }
+                    baselineY = new
+                    return
+                }
+
+                let displacement = new - baselineY
+
+                if tabBarVisible {
+                    if displacement >= hideThreshold {
+                        baselineY = new
+                        setTabBarVisible(false)
+                    } else if displacement < 0 {
+                        baselineY = new // Track upward movement while visible
+                    }
+                } else {
+                    if scrollPhase == .interacting && displacement <= -showThreshold {
+                        baselineY = new
+                        setTabBarVisible(true)
+                    } else if displacement > 0 {
+                        baselineY = new // Advance baseline when scrolling deeper while hidden
+                    }
+                }
+            }
+    }
+}
+
+extension View {
+    /// Hides the floating tab bar when the user scrolls down, reveals it when
+    /// they scroll back up. Apply to the top-level `List` or `ScrollView` of
+    /// each main tab.
+    func hideTabBarOnScrollDown() -> some View {
+        modifier(HideTabBarOnScrollDown())
+    }
 }
 
 private struct ReservesFloatingTabBarSpace: ViewModifier {

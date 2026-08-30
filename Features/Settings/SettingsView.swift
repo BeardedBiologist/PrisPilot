@@ -141,6 +141,7 @@ struct SettingsView: View {
                 }
             }
             .reservesFloatingTabBarSpace()
+            .hideTabBarOnScrollDown()
             .navigationTitle("Profile & Settings")
             .sheet(isPresented: $showSignIn) {
                 SignInView()

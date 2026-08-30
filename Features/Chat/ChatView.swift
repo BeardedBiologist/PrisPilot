@@ -18,9 +18,11 @@ struct ChatView: View {
                     chatHeader
                     messageList
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    inputBar
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .safeAreaInset(edge: .bottom, spacing: 0) {
+                    inputBar
+                }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .toolbar(.hidden, for: .navigationBar)
@@ -134,6 +136,7 @@ struct ChatView: View {
                 .animation(reduceMotion ? nil : .snappy, value: viewModel.isTyping)
             }
             .scrollDismissesKeyboard(.interactively)
+            .hideTabBarOnScrollDown()
             .onChange(of: viewModel.messages.count) { _, _ in
                 scrollToBottom(proxy: proxy)
             }

@@ -6,6 +6,7 @@ struct ShoppingView: View {
     @Environment(AppStore.self) private var store
     @Environment(\.switchToChatTab) private var switchToChatTab
     @State private var showAddList = false
+    @State private var showShoppingStats = false
     @State private var segment: ShoppingListSegment = .active
     @State private var isOptimizingAll = false
     @Namespace private var heroSpace
@@ -118,14 +119,24 @@ struct ShoppingView: View {
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
             .reservesFloatingTabBarSpace()
+            .hideTabBarOnScrollDown()
             .navigationTitle("Shopping")
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button { showAddList = true } label: {
-                        Image(systemName: "plus")
+                    HStack {
+                        Button { showShoppingStats = true } label: {
+                            Image(systemName: "chart.bar.xaxis")
+                        }
+                        .accessibilityLabel("Shopping stats")
+                        Button { showAddList = true } label: {
+                            Image(systemName: "plus")
+                        }
+                        .accessibilityLabel("Add shopping list")
                     }
-                    .accessibilityLabel("Add shopping list")
                 }
+            }
+            .sheet(isPresented: $showShoppingStats) {
+                ShoppingStatsView().environment(store)
             }
             .sheet(isPresented: $showAddList) {
                 AddShoppingListSheet().environment(store)

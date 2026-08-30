@@ -11,6 +11,7 @@ struct RecipesView: View {
                 MealPlanView().environment(store)
             }
             .reservesFloatingTabBarSpace()
+            .hideTabBarOnScrollDown()
             .navigationTitle("Meals")
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
