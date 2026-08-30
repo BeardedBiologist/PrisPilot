@@ -165,6 +165,10 @@ struct RootTabView: View {
                 .frame(width: 84, height: 72)
                 .zIndex(1)
         }
+        // Prevent tap-through: Color.clear doesn't intercept touches, so taps on
+        // the glass surface that miss a button would reach content behind the bar.
+        // Using .background keeps this sized to the ZStack's natural height.
+        .background(Color.black.opacity(0.001))
         .padding(.horizontal, 16)
         .padding(.bottom, 2)
     }

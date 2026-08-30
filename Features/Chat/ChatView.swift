@@ -241,9 +241,9 @@ struct ChatView: View {
                         .symbolEffect(.bounce, value: sendBounce)
                         .symbolEffectsRemoved(reduceMotion)
                         .frame(width: 36, height: 36)
+                        .glassEffect(.regular.tint(GlassTheme.tint).interactive(), in: Circle())
                 }
-                .buttonStyle(.glassProminent)
-                .tint(GlassTheme.tint)
+                .buttonStyle(.plain)
                 .disabled(!canSend)
                 .animation(.easeInOut(duration: 0.15), value: canSend)
                 .accessibilityLabel("Send message")
