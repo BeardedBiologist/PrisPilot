@@ -24,6 +24,7 @@
 		C473BA273038848900C67296 /* ReceiptScannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C473BA263038848900C67296 /* ReceiptScannerView.swift */; };
 		C48222F430437DE20007F475 /* ShoppingStatsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C48222F330437DE20007F475 /* ShoppingStatsView.swift */; };
 		C48222F630437E170007F475 /* PricesStatsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C48222F530437E170007F475 /* PricesStatsView.swift */; };
+		C48222F830447FE60007F475 /* Chat_AI_Experience_Improvement_Plan.md in Resources */ = {isa = PBXBuildFile; fileRef = C48222F730447FE60007F475 /* Chat_AI_Experience_Improvement_Plan.md */; };
 		C4CCD1773037534300157B4E /* AppModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4CCD1763037534300157B4E /* AppModels.swift */; };
 		C4CCD1793037535000157B4E /* AITypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4CCD1783037535000157B4E /* AITypes.swift */; };
 		C4CCD17B3037536B00157B4E /* ProposedAction.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4CCD17A3037536B00157B4E /* ProposedAction.swift */; };
@@ -84,6 +85,7 @@
 		C473BA263038848900C67296 /* ReceiptScannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReceiptScannerView.swift; sourceTree = "<group>"; };
 		C48222F330437DE20007F475 /* ShoppingStatsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShoppingStatsView.swift; sourceTree = "<group>"; };
 		C48222F530437E170007F475 /* PricesStatsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PricesStatsView.swift; sourceTree = "<group>"; };
+		C48222F730447FE60007F475 /* Chat_AI_Experience_Improvement_Plan.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = Chat_AI_Experience_Improvement_Plan.md; sourceTree = "<group>"; };
 		C4ACBAF930374FA900D1D068 /* PrisPilot.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PrisPilot.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		C4ACBB0830374FAC00D1D068 /* PrisPilotTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PrisPilotTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		C4ACBB1230374FAC00D1D068 /* PrisPilotUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PrisPilotUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -189,6 +191,7 @@
 				C4D878993037919D002CD76D /* Services */,
 				C4D8789A3037919E002CD76D /* Features */,
 				C473BA2130386BC100C67296 /* BUILD_STATUS.md */,
+				C48222F730447FE60007F475 /* Chat_AI_Experience_Improvement_Plan.md */,
 			);
 			sourceTree = "<group>";
 		};
@@ -447,6 +450,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				C473BA2230386BC100C67296 /* BUILD_STATUS.md in Resources */,
+				C48222F830447FE60007F475 /* Chat_AI_Experience_Improvement_Plan.md in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
