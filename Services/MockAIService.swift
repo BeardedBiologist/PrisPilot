@@ -5,6 +5,13 @@ import Observation
 class MockAIService: AIService, OnboardingAIService {
     let providerName = "Mock AI (Development)"
     var isAvailable = true
+    let capabilities = AIProviderCapabilities(
+        provider: "Mock AI",
+        supportsFunctionCalling: false,
+        supportsJSONMode: false,
+        supportsStreaming: false,
+        reportsTokenUsage: false
+    )
     private(set) var requestCount = 0
 
     func send(
@@ -272,7 +279,7 @@ class MockAIService: AIService, OnboardingAIService {
         let action = ProposedAction(
             type: .deleteMemory,
             summary: "Remove saved preference from AI Memory",
-            payload: .generic(description: "Delete memory"),
+            payload: .deleteMemory(summary: input),
             riskLevel: .medium
         )
         return AIResponse(

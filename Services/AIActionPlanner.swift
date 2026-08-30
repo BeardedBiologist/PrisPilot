@@ -35,9 +35,13 @@ struct AIActionPlanner {
     }
 
     private func planProposal(draft: AIIntentDraft) -> AIPlannedTurn {
-        let actions = draft.actions.map { draftAction in
-            var action = draftAction.proposedAction
+        let companionActions = orderedActions(from: draft.actions.map(\.proposedAction))
+        let actions = companionActions.map { proposedAction in
+            var action = proposedAction
             action.validationResult = appStore.validate(action)
+            if shouldTreatAsValidRecipeDependency(action, in: companionActions) {
+                action.validationResult = .valid
+            }
             return action
         }
 
@@ -62,6 +66,32 @@ struct AIActionPlanner {
             actions: actions,
             memoryProposals: draft.memoryProposals
         )
+    }
+
+    private func orderedActions(from actions: [ProposedAction]) -> [ProposedAction] {
+        actions.sorted { lhs, rhs in
+            actionPriority(lhs.type) < actionPriority(rhs.type)
+        }
+    }
+
+    private func actionPriority(_ type: ProposedActionType) -> Int {
+        switch type {
+        case .createShoppingList, .createRecipe:
+            return 0
+        default:
+            return 1
+        }
+    }
+
+    private func shouldTreatAsValidRecipeDependency(_ action: ProposedAction, in actions: [ProposedAction]) -> Bool {
+        guard case .addRecipeToShoppingList(let recipeName, _) = action.payload,
+              case .invalid(let reason) = action.validationResult,
+              reason.contains("No recipe named") else { return false }
+
+        return actions.contains { candidate in
+            guard case .createRecipe(let title, _, _) = candidate.payload else { return false }
+            return title.caseInsensitiveCompare(recipeName) == .orderedSame
+        }
     }
 
     private var fallbackAnswer: String {

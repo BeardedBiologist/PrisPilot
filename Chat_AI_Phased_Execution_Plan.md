@@ -29,11 +29,11 @@ That means:
 | 3 | Entity Resolver And Clarification | Ambiguous or missing targets produce deterministic clarification. | Ready for manual testing |
 | 4 | Draft Intent Planner | Model output becomes provider-neutral draft intent before proposals. | Ready for manual testing |
 | 5 | Semantic Validator | Every supported action gets native payload and precondition validation. | Ready for manual testing |
-| 6 | Execution Results And Undo | Approval produces structured results and broader undo support. | Not started |
-| 7 | Proposal Editing And Safer Review UI | Users can inspect and correct proposed changes before execution. | Not started |
-| 8 | Regression Harness | Chat behavior has repeatable parser, resolver, validator, and golden tests. | Not started |
-| 9 | Provider And Prompt Versioning | Gemini integration becomes replaceable, traceable, and prompt-versioned. | Not started |
-| 10 | Advanced Chat UX | Chat becomes a stronger primary app-control surface. | Not started |
+| 6 | Execution Results And Undo | Approval produces structured results and broader undo support. | Ready for manual testing |
+| 7 | Proposal Editing And Safer Review UI | Users can inspect and correct proposed changes before execution. | Ready for manual testing |
+| 8 | Regression Harness | Chat behavior has repeatable parser, resolver, validator, and golden tests. | Ready for manual testing |
+| 9 | Provider And Prompt Versioning | Gemini integration becomes replaceable, traceable, and prompt-versioned. | Ready for manual testing |
+| 10 | Advanced Chat UX | Chat becomes a stronger primary app-control surface. | Ready for manual testing |
 
 ## Phase 0: Baseline And Failure Inventory
 

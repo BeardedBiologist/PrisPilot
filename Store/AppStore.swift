@@ -150,6 +150,7 @@ class AppStore {
     }
 
     func canUndoActivityTag(_ tag: ActivityTag) -> Bool {
+        if tag.undoSnapshot != nil { return true }
         guard !tag.affectedRecordIDs.isEmpty else { return false }
         switch tag.actionType {
         case .createPriceObservation, .addShoppingListItem, .createShoppingList,
@@ -164,6 +165,9 @@ class AppStore {
     @discardableResult
     func undoActivityTag(_ tag: ActivityTag) -> Bool {
         guard canUndoActivityTag(tag) else { return false }
+        if let snapshot = tag.undoSnapshot {
+            return applyUndoSnapshot(snapshot)
+        }
         let ids = Set(tag.affectedRecordIDs)
         var didUndo = false
 
@@ -180,11 +184,6 @@ class AppStore {
                 shoppingLists[listIndex].items.removeAll { ids.contains($0.id) }
                 didUndo = didUndo || shoppingLists[listIndex].items.count != before
             }
-
-        case .createShoppingList:
-            let before = shoppingLists.count
-            shoppingLists.removeAll { ids.contains($0.id) }
-            didUndo = shoppingLists.count != before
 
         case .createStore:
             let removableBranchIDs = ids.filter { branchID in
@@ -232,6 +231,219 @@ class AppStore {
             persistNow()
         }
         return didUndo
+    }
+
+    // MARK: - Undo Snapshot Application
+
+    @discardableResult
+    private func applyUndoSnapshot(_ snapshot: UndoSnapshot) -> Bool {
+        switch snapshot {
+        case .productFields(let id, let name, let category, let unit):
+            guard let idx = products.firstIndex(where: { $0.id == id }) else { return false }
+            products[idx].name = name
+            products[idx].category = category
+            products[idx].defaultUnit = unit
+
+        case .recipeFields(let id, let title, let description, let servings):
+            guard let idx = recipes.firstIndex(where: { $0.id == id }) else { return false }
+            recipes[idx].title = title
+            recipes[idx].description = description
+            recipes[idx].servings = servings
+
+        case .shoppingListFields(let id, let name, let plannedDate):
+            guard let idx = shoppingLists.firstIndex(where: { $0.id == id }) else { return false }
+            shoppingLists[idx].name = name
+            shoppingLists[idx].plannedDate = plannedDate
+
+        case .shoppingListStatusFields(let id, let status, let completedAt, let archivedAt):
+            guard let idx = shoppingLists.firstIndex(where: { $0.id == id }) else { return false }
+            shoppingLists[idx].status = status
+            shoppingLists[idx].completedAt = completedAt
+            shoppingLists[idx].archivedAt = archivedAt
+
+        case .shoppingListItemFields(let listID, let itemID, let quantity, let notes):
+            guard let listIdx = shoppingLists.firstIndex(where: { $0.id == listID }),
+                  let itemIdx = shoppingLists[listIdx].items.firstIndex(where: { $0.id == itemID }) else { return false }
+            shoppingLists[listIdx].items[itemIdx].requestedQuantity = quantity
+            shoppingLists[listIdx].items[itemIdx].notes = notes
+
+        case .shoppingListItemState(let listID, let item):
+            guard let listIdx = shoppingLists.firstIndex(where: { $0.id == listID }),
+                  let itemIdx = shoppingLists[listIdx].items.firstIndex(where: { $0.id == item.id }) else { return false }
+            shoppingLists[listIdx].items[itemIdx] = item
+
+        case .priceObservationFields(let id, let price, let quantity, let unit):
+            guard let idx = priceObservations.firstIndex(where: { $0.id == id }) else { return false }
+            priceObservations[idx].price = price
+            priceObservations[idx].quantity = quantity
+            priceObservations[idx].unit = unit
+
+        case .productMetadataFields(let id, let aliases, let barcode):
+            guard let idx = products.firstIndex(where: { $0.id == id }) else { return false }
+            products[idx].aliases = aliases
+            products[idx].barcode = barcode
+
+        case .storeBranchFields(let id, let chainName, let branchName, let address, let isEnabled):
+            guard let idx = branches.firstIndex(where: { $0.id == id }) else { return false }
+            branches[idx].chainName = chainName
+            branches[idx].name = branchName
+            branches[idx].address = address
+            branches[idx].isEnabled = isEnabled
+
+        case .communityContributionFlag(let id, let wasFlagged):
+            guard let idx = communityContributions.firstIndex(where: { $0.id == id }) else { return false }
+            communityContributions[idx].isFlagged = wasFlagged
+
+        case .matkasseBoxFields(let id, let provider, let deliveryWeekStartDate, let numberOfMeals, let servingsPerMeal, let price, let notes):
+            guard let idx = matkasseBoxes.firstIndex(where: { $0.id == id }) else { return false }
+            matkasseBoxes[idx].provider = provider
+            matkasseBoxes[idx].deliveryWeekStartDate = deliveryWeekStartDate
+            matkasseBoxes[idx].numberOfMeals = numberOfMeals
+            matkasseBoxes[idx].servingsPerMeal = servingsPerMeal
+            matkasseBoxes[idx].price = price
+            matkasseBoxes[idx].notes = notes
+
+        case .deletedShoppingList(let list):
+            guard !shoppingLists.contains(where: { $0.id == list.id }) else { return false }
+            shoppingLists.append(list)
+
+        case .createdShoppingList(let id):
+            let before = shoppingLists.count
+            shoppingLists.removeAll { $0.id == id }
+            guard shoppingLists.count != before else { return false }
+
+        case .deletedShoppingListItem(let listID, let item):
+            guard let idx = shoppingLists.firstIndex(where: { $0.id == listID }),
+                  !shoppingLists[idx].items.contains(where: { $0.id == item.id }) else { return false }
+            shoppingLists[idx].items.append(item)
+
+        case .deletedProduct(let product):
+            guard !products.contains(where: { $0.id == product.id }) else { return false }
+            products.append(product)
+
+        case .deletedRecipe(let recipe):
+            guard !recipes.contains(where: { $0.id == recipe.id }) else { return false }
+            recipes.append(recipe)
+
+        case .deletedPriceObservation(let obs):
+            guard !priceObservations.contains(where: { $0.id == obs.id }) else { return false }
+            priceObservations.append(obs)
+
+        case .createdCommunityContribution(let id):
+            let before = communityContributions.count
+            communityContributions.removeAll { $0.id == id }
+            guard communityContributions.count != before else { return false }
+
+        case .deletedStoreBranch(let branch):
+            guard !branches.contains(where: { $0.id == branch.id }) else { return false }
+            branches.append(branch)
+
+        case .deletedMatkasseBox(let box):
+            guard !matkasseBoxes.contains(where: { $0.id == box.id }) else { return false }
+            matkasseBoxes.append(box)
+
+        case .deletedMatkasseMeal(let boxID, let meal):
+            guard let idx = matkasseBoxes.firstIndex(where: { $0.id == boxID }),
+                  !matkasseBoxes[idx].includedMeals.contains(where: { $0.id == meal.id }) else { return false }
+            matkasseBoxes[idx].includedMeals.append(meal)
+
+        case .deletedMemory(let memory):
+            guard !memories.contains(where: { $0.id == memory.id }) else { return false }
+            memories.append(memory)
+
+        case .householdState(let previousHousehold, let previousInvitations):
+            household = previousHousehold
+            invitations = previousInvitations
+
+        case .createdInvitation(let id):
+            let before = invitations.count
+            invitations.removeAll { $0.id == id }
+            guard invitations.count != before else { return false }
+
+        case .addedMealPlanSlot(let date, let mealType):
+            clearMealPlanSlot(date: date, mealType: mealType)
+
+        case .overwrittenMealPlanSlot(let slot), .clearedMealPlanSlot(let slot):
+            setMealPlanSlot(date: slot.date, mealType: slot.mealType, content: slot.content, isLeftover: slot.isLeftover, notes: slot.notes)
+        }
+        persistNow()
+        return true
+    }
+
+    // MARK: - Execution Plan
+
+    func executePlan(_ plan: ActionExecutionPlan) -> ActionPlanResult {
+        if plan.mode == .allOrNothing {
+            for action in plan.actions {
+                let validation = validate(action)
+                if !validation.isValid {
+                    let reason: String
+                    switch validation {
+                    case .invalid(let r): reason = r
+                    case .requiresClarification(let q): reason = q
+                    default: reason = "Validation failed"
+                    }
+                    return ActionPlanResult(outcomes: plan.actions.map { a in
+                        ActionPlanResult.ActionOutcome(
+                            actionID: a.id,
+                            affectedRecordIDs: [],
+                            undoSnapshot: nil,
+                            failureReason: nil,
+                            skippedReason: "Skipped: another action failed validation — \(reason)"
+                        )
+                    })
+                }
+            }
+        }
+
+        var outcomes: [ActionPlanResult.ActionOutcome] = []
+        var appliedTags: [ActivityTag] = []
+        for action in plan.actions {
+            do {
+                let result = try execute(action)
+                appliedTags.append(ActivityTag(
+                    id: UUID(),
+                    actionType: action.type,
+                    summary: action.summary,
+                    timestamp: Date(),
+                    affectedRecordIDs: result.affectedRecordIDs,
+                    undoSnapshot: result.undoSnapshot
+                ))
+                outcomes.append(ActionPlanResult.ActionOutcome(
+                    actionID: action.id,
+                    affectedRecordIDs: result.affectedRecordIDs,
+                    undoSnapshot: result.undoSnapshot,
+                    failureReason: nil,
+                    skippedReason: nil
+                ))
+            } catch let error as AIServiceError {
+                rollbackIfNeeded(mode: plan.mode, appliedTags: appliedTags)
+                outcomes.append(ActionPlanResult.ActionOutcome(
+                    actionID: action.id,
+                    affectedRecordIDs: [],
+                    undoSnapshot: nil,
+                    failureReason: error.localizedDescription,
+                    skippedReason: nil
+                ))
+            } catch {
+                rollbackIfNeeded(mode: plan.mode, appliedTags: appliedTags)
+                outcomes.append(ActionPlanResult.ActionOutcome(
+                    actionID: action.id,
+                    affectedRecordIDs: [],
+                    undoSnapshot: nil,
+                    failureReason: error.localizedDescription,
+                    skippedReason: nil
+                ))
+            }
+        }
+        return ActionPlanResult(outcomes: outcomes)
+    }
+
+    private func rollbackIfNeeded(mode: ActionExecutionPlan.DependencyMode, appliedTags: [ActivityTag]) {
+        guard mode == .allOrNothing else { return }
+        for tag in appliedTags.reversed() {
+            _ = undoActivityTag(tag)
+        }
     }
 
     private func persistIfReady() {
@@ -289,10 +501,10 @@ class AppStore {
     @discardableResult
     func createChatSession(
         title: String = "New Chat",
-        messages: [ChatMessage] = [AppStore.welcomeChatMessage()],
+        messages: [ChatMessage]? = nil,
         purpose: ChatSessionPurpose = .general
     ) -> UUID {
-        let session = ChatSession(title: title, messages: messages, purpose: purpose)
+        let session = ChatSession(title: title, messages: messages ?? [Self.welcomeChatMessage()], purpose: purpose)
         chatSessions.insert(session, at: 0)
         selectedChatSessionID = session.id
         return session.id
@@ -327,6 +539,36 @@ class AppStore {
 
     func messages(for sessionID: UUID) -> [ChatMessage] {
         chatSessions.first(where: { $0.id == sessionID })?.messages ?? []
+    }
+
+    func pendingProposals(for sessionID: UUID) -> [ChatPendingProposal] {
+        messages(for: sessionID).compactMap { message in
+            guard case .proposedActions(_, let actions, let memoryProposals) = message.content else {
+                return nil
+            }
+            let pendingCount = actions.filter { !$0.status.isTerminal }.count + memoryProposals.count
+            let failedCount = actions.filter { $0.status == .failed }.count
+            guard pendingCount > 0 || failedCount > 0 else { return nil }
+            let firstSummary = actions.first(where: { !$0.status.isTerminal || $0.status == .failed })?.summary
+                ?? memoryProposals.first?.memory.summary
+                ?? "Pending AI changes"
+            return ChatPendingProposal(
+                messageID: message.id,
+                pendingActionCount: pendingCount,
+                failedActionCount: failedCount,
+                firstSummary: firstSummary
+            )
+        }
+    }
+
+    func pendingClarification(for sessionID: UUID) -> ChatPendingClarification? {
+        chatSessions.first(where: { $0.id == sessionID })?.pendingClarification
+    }
+
+    func setPendingClarification(_ clarification: ChatPendingClarification?, for sessionID: UUID) {
+        guard let index = chatSessions.firstIndex(where: { $0.id == sessionID }) else { return }
+        chatSessions[index].pendingClarification = clarification
+        refreshChatSessionMetadata(at: index)
     }
 
     func purpose(for sessionID: UUID) -> ChatSessionPurpose {
@@ -467,12 +709,12 @@ class AppStore {
         }
     }
 
-    nonisolated private static func welcomeChatMessage() -> ChatMessage {
+    private static func welcomeChatMessage() -> ChatMessage {
         let text = "Hi! I'm your PrisPilot assistant. I can help you:\n\n• Track grocery prices across stores\n• Manage shopping lists\n• Plan meals and estimate costs\n• Find the cheapest shopping options\n\nTry: \"I paid kr 39.90 for 400 g minced beef at Kiwi\""
         return ChatMessage(role: .assistant, content: .text(text))
     }
 
-    nonisolated private static func aiOnboardingMessage() -> ChatMessage {
+    private static func aiOnboardingMessage() -> ChatMessage {
         let text = OnboardingFlow.questions.first?.prompt ?? "Let's set up PrisPilot."
         return ChatMessage(role: .assistant, content: .text(text))
     }
@@ -625,7 +867,7 @@ class AppStore {
             if isBlank(name) { return .invalid(reason: "Shopping list name cannot be empty.") }
             switch resolver.shoppingList(named: name, allowCreate: true) {
             case .resolved:
-                return .invalid(reason: "A shopping list named \(name) already exists.")
+                return .warning(message: "A shopping list named \(name) already exists. Approval will use the existing list.")
             case .ambiguous(let candidates):
                 return .requiresClarification(question: resolver.clarificationQuestion(for: "shopping list", candidates: candidates))
             case .missing, .creatable:
@@ -868,9 +1110,13 @@ class AppStore {
             if productIndex(matching: productName) == nil { return .invalid(reason: "No product named \(productName) was found.") }
             if isBlank(barcode) { return .invalid(reason: "Barcode cannot be empty.") }
 
-        case .createRecipe(let title, let servings):
+        case .createRecipe(let title, let servings, let ingredients):
             if isBlank(title) { return .invalid(reason: "Recipe title cannot be empty.") }
             if servings <= 0 { return .invalid(reason: "Recipe servings must be greater than zero.") }
+            for ingredient in ingredients {
+                if isBlank(ingredient.productName) { return .invalid(reason: "Recipe ingredients need product names.") }
+                if ingredient.quantity <= 0 { return .invalid(reason: "Recipe ingredient quantities must be greater than zero.") }
+            }
             switch resolver.recipe(named: title, allowCreate: true) {
             case .resolved:
                 return .invalid(reason: "A recipe named \(title) already exists.")
@@ -1070,6 +1316,57 @@ class AppStore {
             if isDuplicateMemory(summary: summary, category: category) { return .invalid(reason: "A similar memory is already saved.") }
             if sensitivityLevel != .standard { return .warning(message: "Sensitive memories require careful review before saving.") }
 
+        case .updateMemory(let existingSummary, let newSummary, let category, let strength, let sensitivityLevel):
+            let memory: AIMemory
+            switch resolver.memory(matching: existingSummary) {
+            case .resolved(let resolvedMemory):
+                memory = resolvedMemory
+            case .ambiguous(let candidates):
+                return .requiresClarification(question: resolver.clarificationQuestion(for: "memory", candidates: candidates))
+            case .missing, .creatable:
+                return .invalid(reason: "No matching memory was found.")
+            }
+            if let newSummary, isBlank(newSummary) { return .invalid(reason: "Memory summary cannot be empty.") }
+            if newSummary == nil && category == nil && strength == nil && sensitivityLevel == nil {
+                return .invalid(reason: "Memory update needs at least one changed value.")
+            }
+            if let newSummary,
+               newSummary.caseInsensitiveCompare(memory.summary) != .orderedSame,
+               isDuplicateMemory(summary: newSummary, category: category ?? memory.category) {
+                return .invalid(reason: "A similar memory is already saved.")
+            }
+            if let sensitivityLevel, sensitivityLevel != .standard {
+                return .warning(message: "Sensitive memories require careful review before saving.")
+            }
+
+        case .deleteMemory(let summary):
+            switch resolver.memory(matching: summary) {
+            case .resolved:
+                break
+            case .ambiguous(let candidates):
+                return .requiresClarification(question: resolver.clarificationQuestion(for: "memory", candidates: candidates))
+            case .missing, .creatable:
+                return .invalid(reason: "No matching memory was found.")
+            }
+
+        case .createHousehold(let name, _):
+            if isBlank(name) { return .invalid(reason: "Household name cannot be empty.") }
+            if household != nil { return .invalid(reason: "A household already exists.") }
+
+        case .inviteHouseholdMember(let email):
+            guard household != nil else { return .invalid(reason: "Create a household before inviting members.") }
+            if let email, !isBlank(email), !email.contains("@") {
+                return .invalid(reason: "Invite email must be a valid email address.")
+            }
+
+        case .updateHouseholdMember(let userID, let displayName, let role):
+            guard let household else { return .invalid(reason: "No household exists.") }
+            guard household.members.contains(where: { $0.userID == userID }) else {
+                return .invalid(reason: "No matching household member was found.")
+            }
+            if let displayName, isBlank(displayName) { return .invalid(reason: "Member display name cannot be empty.") }
+            if displayName == nil && role == nil { return .invalid(reason: "Household member update needs a changed name or role.") }
+
         case .changeAppSetting(let key, let value):
             return validateSettingChange(key: key, value: value)
 
@@ -1140,6 +1437,16 @@ class AppStore {
             return isEnabled ? action.type == .enableStore : action.type == .disableStore
         case .createMemory:
             return action.type == .createMemory
+        case .updateMemory:
+            return action.type == .updateMemory
+        case .deleteMemory:
+            return action.type == .deleteMemory
+        case .createHousehold:
+            return action.type == .createHousehold
+        case .inviteHouseholdMember:
+            return action.type == .inviteHouseholdMember
+        case .updateHouseholdMember:
+            return action.type == .updateHouseholdMember
         case .changeAppSetting:
             return action.type == .changeAppSetting
         case .createRecipe:
@@ -1262,7 +1569,7 @@ class AppStore {
     // MARK: - Action Execution
 
     @discardableResult
-    func execute(_ action: ProposedAction) throws -> [UUID] {
+    func execute(_ action: ProposedAction) throws -> ActionExecutionResult {
         guard validate(action).isValid else { throw AIServiceError.permissionDenied }
         defer { persistNow() }
         switch action.payload {
@@ -1283,99 +1590,131 @@ class AppStore {
             )
             priceObservations.append(observation)
             queueCommunityContributionIfNeeded(for: observation)
-            return [observation.id]
+            return ActionExecutionResult(ids: [observation.id])
 
         case .addShoppingListItem(let listName, let productName, let quantity, let notes):
             let list = findOrCreateShoppingList(name: listName)
-            guard let idx = shoppingLists.firstIndex(where: { $0.id == list.id }) else { return [] }
+            guard let idx = shoppingLists.firstIndex(where: { $0.id == list.id }) else { return .empty }
             var item = ShoppingListItem(listID: list.id, productName: productName, requestedQuantity: quantity)
             item.notes = notes
             shoppingLists[idx].items.append(item)
-            return [item.id]
+            return ActionExecutionResult(ids: [item.id])
 
         case .createShoppingList(let name):
+            if let existingIndex = shoppingListIndex(matching: name) {
+                return ActionExecutionResult(ids: [shoppingLists[existingIndex].id])
+            }
             let list = ShoppingList(name: name)
             shoppingLists.append(list)
-            return [list.id]
+            return ActionExecutionResult(ids: [list.id], undo: .createdShoppingList(id: list.id))
 
         case .updateShoppingList(let existingListName, let newName, let plannedDate):
-            guard let idx = shoppingListIndex(matching: existingListName) else { return [] }
+            guard let idx = shoppingListIndex(matching: existingListName) else { return .empty }
+            let snapshot = UndoSnapshot.shoppingListFields(
+                id: shoppingLists[idx].id,
+                name: shoppingLists[idx].name,
+                plannedDate: shoppingLists[idx].plannedDate
+            )
             if let newName, !newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 shoppingLists[idx].name = newName
             }
             if let plannedDate {
                 shoppingLists[idx].plannedDate = plannedDate
             }
-            return [shoppingLists[idx].id]
+            return ActionExecutionResult(ids: [shoppingLists[idx].id], undo: snapshot)
 
         case .deleteShoppingList(let listName):
-            guard let idx = shoppingListIndex(matching: listName) else { return [] }
+            guard let idx = shoppingListIndex(matching: listName) else { return .empty }
+            let snapshot = UndoSnapshot.deletedShoppingList(shoppingLists[idx])
             let id = shoppingLists[idx].id
             shoppingLists.remove(at: idx)
-            return [id]
+            return ActionExecutionResult(ids: [id], undo: snapshot)
 
         case .updateShoppingListItem(let listName, let productName, let newQuantity, let newNotes):
             guard let listIdx = shoppingListIndex(matching: listName),
-                  let itemIdx = shoppingListItemIndex(in: listIdx, matchingProduct: productName) else { return [] }
+                  let itemIdx = shoppingListItemIndex(in: listIdx, matchingProduct: productName) else { return .empty }
+            let item = shoppingLists[listIdx].items[itemIdx]
+            let snapshot = UndoSnapshot.shoppingListItemFields(
+                listID: shoppingLists[listIdx].id,
+                itemID: item.id,
+                quantity: item.requestedQuantity,
+                notes: item.notes
+            )
             if let newQuantity, !newQuantity.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 shoppingLists[listIdx].items[itemIdx].requestedQuantity = newQuantity
             }
             if let newNotes {
                 shoppingLists[listIdx].items[itemIdx].notes = newNotes
             }
-            return [shoppingLists[listIdx].items[itemIdx].id]
+            return ActionExecutionResult(ids: [shoppingLists[listIdx].items[itemIdx].id], undo: snapshot)
 
         case .completeShoppingListItem(let listName, let productName, let isCompleted):
             guard let listIdx = shoppingListIndex(matching: listName),
-                  let itemIdx = shoppingListItemIndex(in: listIdx, matchingProduct: productName) else { return [] }
+                  let itemIdx = shoppingListItemIndex(in: listIdx, matchingProduct: productName) else { return .empty }
+            let snapshot = UndoSnapshot.shoppingListItemState(
+                listID: shoppingLists[listIdx].id,
+                item: shoppingLists[listIdx].items[itemIdx]
+            )
             shoppingLists[listIdx].items[itemIdx].isCompleted = isCompleted
-            return [shoppingLists[listIdx].items[itemIdx].id]
+            return ActionExecutionResult(ids: [shoppingLists[listIdx].items[itemIdx].id], undo: snapshot)
 
         case .removeShoppingListItem(let listName, let productName):
             guard let listIdx = shoppingListIndex(matching: listName),
-                  let itemIdx = shoppingListItemIndex(in: listIdx, matchingProduct: productName) else { return [] }
+                  let itemIdx = shoppingListItemIndex(in: listIdx, matchingProduct: productName) else { return .empty }
+            let snapshot = UndoSnapshot.deletedShoppingListItem(
+                listID: shoppingLists[listIdx].id,
+                item: shoppingLists[listIdx].items[itemIdx]
+            )
             let id = shoppingLists[listIdx].items[itemIdx].id
             shoppingLists[listIdx].items.remove(at: itemIdx)
-            return [id]
+            return ActionExecutionResult(ids: [id], undo: snapshot)
 
         case .setShoppingListStatus(let listName, let statusRaw):
-            guard let idx = shoppingListIndex(matching: listName) else { return [] }
+            guard let idx = shoppingListIndex(matching: listName) else { return .empty }
             let listID = shoppingLists[idx].id
+            let snapshot = UndoSnapshot.shoppingListStatusFields(
+                id: listID,
+                status: shoppingLists[idx].status,
+                completedAt: shoppingLists[idx].completedAt,
+                archivedAt: shoppingLists[idx].archivedAt
+            )
             switch statusRaw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
             case "active": activateList(listID)
             case "completed", "done", "archived": archiveShoppingList(listID)
-            default: return []
+            default: return .empty
             }
-            return [listID]
+            return ActionExecutionResult(ids: [listID], undo: snapshot)
 
         case .optimizeShoppingList(let listName):
-            guard let idx = shoppingListIndex(matching: listName) else { return [] }
+            guard let idx = shoppingListIndex(matching: listName) else { return .empty }
             let listID = shoppingLists[idx].id
             optimizeShoppingList(listID)
-            return [listID]
+            return ActionExecutionResult(ids: [listID])
 
         case .moveShoppingListItem(let listName, let productName, let storeBranchName):
             guard let listIdx = shoppingListIndex(matching: listName),
                   let itemIdx = shoppingListItemIndex(in: listIdx, matchingProduct: productName),
-                  let branch = branches.first(where: { branchMatches($0, name: storeBranchName) }) else { return [] }
+                  let branch = branches.first(where: { branchMatches($0, name: storeBranchName) }) else { return .empty }
             let itemID = shoppingLists[listIdx].items[itemIdx].id
             let listID = shoppingLists[listIdx].id
+            let snapshot = UndoSnapshot.shoppingListItemState(listID: listID, item: shoppingLists[listIdx].items[itemIdx])
             moveItem(itemID, in: listID, toBranchID: branch.id)
-            return [itemID]
+            return ActionExecutionResult(ids: [itemID], undo: snapshot)
 
         case .substituteShoppingListItem(let listName, let productName, let newProductName):
             guard let listIdx = shoppingListIndex(matching: listName),
-                  let itemIdx = shoppingListItemIndex(in: listIdx, matchingProduct: productName) else { return [] }
+                  let itemIdx = shoppingListItemIndex(in: listIdx, matchingProduct: productName) else { return .empty }
             let itemID = shoppingLists[listIdx].items[itemIdx].id
             let listID = shoppingLists[listIdx].id
+            let snapshot = UndoSnapshot.shoppingListItemState(listID: listID, item: shoppingLists[listIdx].items[itemIdx])
             useSubstitute(itemID, in: listID, newProductName: newProductName)
-            return [itemID]
+            return ActionExecutionResult(ids: [itemID], undo: snapshot)
 
         case .addRecipeToShoppingList(let recipeName, let listName):
             let trimmedRecipeName = recipeName.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard let recipe = recipes.first(where: { $0.title.lowercased() == trimmedRecipeName.lowercased() }) else { return [] }
+            guard let recipe = recipes.first(where: { $0.title.lowercased() == trimmedRecipeName.lowercased() }) else { return .empty }
             let list = findOrCreateShoppingList(name: listName)
-            guard let listIdx = shoppingLists.firstIndex(where: { $0.id == list.id }) else { return [] }
+            guard let listIdx = shoppingLists.firstIndex(where: { $0.id == list.id }) else { return .empty }
             var addedIDs: [UUID] = []
             for ingredient in recipe.ingredients {
                 let item = ShoppingListItem(
@@ -1386,26 +1725,36 @@ class AppStore {
                 shoppingLists[listIdx].items.append(item)
                 addedIDs.append(item.id)
             }
-            return addedIDs
+            return ActionExecutionResult(ids: addedIDs)
 
         case .createStore(let chainName, let branchName, let address, let isEnabled):
             let branch = createStoreBranch(chainName: chainName, branchName: branchName, address: address, isEnabled: isEnabled)
-            return [branch.id]
+            return ActionExecutionResult(ids: [branch.id])
 
         case .updateStore(let existingStoreName, let chainName, let branchName, let address, let isEnabled):
-            guard let branch = updateStoreBranch(matching: existingStoreName, chainName: chainName, branchName: branchName, address: address, isEnabled: isEnabled) else { return [] }
-            return [branch.id]
+            let existingBranch = branches.first(where: { branchMatches($0, name: existingStoreName) })
+            let snapshot = existingBranch.map { b in
+                UndoSnapshot.storeBranchFields(id: b.id, chainName: b.chainName, branchName: b.name, address: b.address, isEnabled: b.isEnabled)
+            }
+            guard let branch = updateStoreBranch(matching: existingStoreName, chainName: chainName, branchName: branchName, address: address, isEnabled: isEnabled) else { return .empty }
+            return ActionExecutionResult(ids: [branch.id], undo: snapshot)
 
         case .deleteStore(let storeName):
-            guard let deletedID = deleteStoreBranch(matching: storeName) else { return [] }
-            return [deletedID]
+            guard let branchToDelete = branches.first(where: { branchMatches($0, name: storeName) }) else { return .empty }
+            let snapshot = UndoSnapshot.deletedStoreBranch(branchToDelete)
+            guard let deletedID = deleteStoreBranch(matching: storeName) else { return .empty }
+            return ActionExecutionResult(ids: [deletedID], undo: snapshot)
 
         case .setStoreEnabled(let storeName, let isEnabled):
-            guard let branch = setStoreBranchEnabled(matching: storeName, isEnabled: isEnabled) else { return [] }
-            return [branch.id]
+            let existingBranch = branches.first(where: { branchMatches($0, name: storeName) })
+            let snapshot = existingBranch.map { b in
+                UndoSnapshot.storeBranchFields(id: b.id, chainName: b.chainName, branchName: b.name, address: b.address, isEnabled: b.isEnabled)
+            }
+            guard let branch = setStoreBranchEnabled(matching: storeName, isEnabled: isEnabled) else { return .empty }
+            return ActionExecutionResult(ids: [branch.id], undo: snapshot)
 
         case .createMemory(let summary, let category, let strength, let sensitivityLevel):
-            guard !isDuplicateMemory(summary: summary, category: category) else { return [] }
+            guard !isDuplicateMemory(summary: summary, category: category) else { return .empty }
             let memory = AIMemory(
                 summary: summary,
                 category: category,
@@ -1413,54 +1762,118 @@ class AppStore {
                 sensitivityLevel: sensitivityLevel
             )
             memories.append(memory)
-            return [memory.id]
+            return ActionExecutionResult(ids: [memory.id])
+
+        case .updateMemory(let existingSummary, let newSummary, let category, let strength, let sensitivityLevel):
+            let resolver = AIEntityResolver(appStore: self)
+            guard case .resolved(let memory) = resolver.memory(matching: existingSummary),
+                  let idx = memories.firstIndex(where: { $0.id == memory.id }) else { return .empty }
+            let snapshot = UndoSnapshot.deletedMemory(memories[idx])
+            memories[idx].summary = newSummary?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty ?? memories[idx].summary
+            if let category { memories[idx].category = category }
+            if let strength { memories[idx].strength = strength }
+            if let sensitivityLevel { memories[idx].sensitivityLevel = sensitivityLevel }
+            return ActionExecutionResult(ids: [memories[idx].id], undo: snapshot)
+
+        case .deleteMemory(let summary):
+            let resolver = AIEntityResolver(appStore: self)
+            guard case .resolved(let memory) = resolver.memory(matching: summary),
+                  let idx = memories.firstIndex(where: { $0.id == memory.id }) else { return .empty }
+            let snapshot = UndoSnapshot.deletedMemory(memories[idx])
+            let id = memories[idx].id
+            memories.remove(at: idx)
+            return ActionExecutionResult(ids: [id], undo: snapshot)
+
+        case .createHousehold(let name, let ownerDisplayName):
+            guard household == nil else { return .empty }
+            let owner = AuthUser(
+                id: "local-ai-owner",
+                email: "local@prispilot.app",
+                displayName: ownerDisplayName?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty ?? "PrisPilot User",
+                createdAt: Date()
+            )
+            let snapshot = UndoSnapshot.householdState(household: household, invitations: invitations)
+            let created = createHousehold(name: name, owner: owner)
+            return ActionExecutionResult(ids: [created.id], undo: snapshot)
+
+        case .inviteHouseholdMember(let email):
+            guard household != nil,
+                  let invitation = createHouseholdInvitation(inviteeEmail: email, inviterUserID: household?.ownerUserID ?? "local-ai-owner") else { return .empty }
+            return ActionExecutionResult(ids: [invitation.id], undo: .createdInvitation(id: invitation.id))
+
+        case .updateHouseholdMember(let userID, let displayName, let role):
+            guard var currentHousehold = household,
+                  let idx = currentHousehold.members.firstIndex(where: { $0.userID == userID }) else { return .empty }
+            let previousHousehold = currentHousehold
+            if let displayName, !displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                currentHousehold.members[idx].displayName = displayName
+            }
+            if let role {
+                currentHousehold.members[idx].role = role
+            }
+            household = currentHousehold
+            return ActionExecutionResult(ids: [currentHousehold.members[idx].id], undo: .householdState(household: previousHousehold, invitations: invitations))
 
         case .createProduct(let name, let category, let unit):
             let product = Product(name: name, category: category, defaultUnit: unit)
             products.append(product)
-            return [product.id]
+            return ActionExecutionResult(ids: [product.id])
 
         case .updateProduct(let existingName, let newName, let category, let unit):
-            guard let idx = productIndex(matching: existingName) else { return [] }
+            guard let idx = productIndex(matching: existingName) else { return .empty }
+            let snapshot = UndoSnapshot.productFields(
+                id: products[idx].id,
+                name: products[idx].name,
+                category: products[idx].category,
+                unit: products[idx].defaultUnit
+            )
             if let newName, !newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 products[idx].name = newName
             }
             if let category { products[idx].category = category }
             if let unit { products[idx].defaultUnit = unit }
-            return [products[idx].id]
+            return ActionExecutionResult(ids: [products[idx].id], undo: snapshot)
 
         case .deleteProduct(let name):
-            guard let idx = productIndex(matching: name) else { return [] }
+            guard let idx = productIndex(matching: name) else { return .empty }
+            let snapshot = UndoSnapshot.deletedProduct(products[idx])
             let id = products[idx].id
             products.remove(at: idx)
-            return [id]
+            return ActionExecutionResult(ids: [id], undo: snapshot)
 
         case .mergeProducts(let sourceProductName, let targetProductName):
             guard let sourceIdx = productIndex(matching: sourceProductName),
-                  let targetIdx = productIndex(matching: targetProductName) else { return [] }
+                  let targetIdx = productIndex(matching: targetProductName) else { return .empty }
             let sourceID = products[sourceIdx].id
             let targetID = products[targetIdx].id
             mergeProducts(sourceID: sourceID, targetID: targetID)
-            return [targetID]
+            return ActionExecutionResult(ids: [targetID])
 
         case .updatePriceObservation(let productName, let storeBranchName, let newPrice, let newQuantity, let newUnit):
-            guard let idx = mostRecentPersonalObservationIndex(productName: productName, storeBranchName: storeBranchName) else { return [] }
+            guard let idx = mostRecentPersonalObservationIndex(productName: productName, storeBranchName: storeBranchName) else { return .empty }
+            let snapshot = UndoSnapshot.priceObservationFields(
+                id: priceObservations[idx].id,
+                price: priceObservations[idx].price,
+                quantity: priceObservations[idx].quantity,
+                unit: priceObservations[idx].unit
+            )
             if let newPrice { priceObservations[idx].price = newPrice }
             if let newQuantity { priceObservations[idx].quantity = newQuantity }
             if let newUnit { priceObservations[idx].unit = newUnit }
-            return [priceObservations[idx].id]
+            return ActionExecutionResult(ids: [priceObservations[idx].id], undo: snapshot)
 
         case .deletePriceObservation(let productName, let storeBranchName):
-            guard let idx = mostRecentPersonalObservationIndex(productName: productName, storeBranchName: storeBranchName) else { return [] }
+            guard let idx = mostRecentPersonalObservationIndex(productName: productName, storeBranchName: storeBranchName) else { return .empty }
+            let snapshot = UndoSnapshot.deletedPriceObservation(priceObservations[idx])
             let id = priceObservations[idx].id
             priceObservations.remove(at: idx)
-            return [id]
+            return ActionExecutionResult(ids: [id], undo: snapshot)
 
         case .confirmPriceObservation(let productName, let storeBranchName):
-            guard let idx = mostRecentPersonalObservationIndex(productName: productName, storeBranchName: storeBranchName) else { return [] }
+            guard let idx = mostRecentPersonalObservationIndex(productName: productName, storeBranchName: storeBranchName) else { return .empty }
             let obsID = priceObservations[idx].id
-            confirmPriceObservation(obsID)
-            return [obsID]
+            guard let refreshed = confirmPriceObservation(obsID) else { return .empty }
+            return ActionExecutionResult(ids: [refreshed.id])
 
         case .flagCommunityPrice(let productName, let storeBranchName):
             let target = productName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -1470,49 +1883,75 @@ class AppStore {
                 let narrowed = candidates.filter { $0.storeBranchName.lowercased().contains(storeTarget) }
                 if !narrowed.isEmpty { candidates = narrowed }
             }
-            guard let obs = candidates.max(by: { $0.observedDate < $1.observedDate }) else { return [] }
-            flagCommunityPriceObservation(obs.id)
-            return [obs.id]
+            guard let obs = candidates.max(by: { $0.observedDate < $1.observedDate }) else { return .empty }
+            let existingContribution = communityContributions.first(where: { $0.sourceObservationID == obs.id })
+            let changedContribution = flagCommunityPriceObservation(obs.id)
+            let snapshot: UndoSnapshot?
+            if let existingContribution {
+                snapshot = .communityContributionFlag(id: existingContribution.id, wasFlagged: existingContribution.isFlagged)
+            } else if let changedContribution {
+                snapshot = .createdCommunityContribution(id: changedContribution.id)
+            } else {
+                snapshot = nil
+            }
+            return ActionExecutionResult(ids: [obs.id], undo: snapshot)
 
         case .addProductAlias(let productName, let alias):
-            guard let idx = productIndex(matching: productName) else { return [] }
+            guard let idx = productIndex(matching: productName) else { return .empty }
             let id = products[idx].id
+            let snapshot = UndoSnapshot.productMetadataFields(id: id, aliases: products[idx].aliases, barcode: products[idx].barcode)
             addProductAlias(id, alias: alias)
-            return [id]
+            return ActionExecutionResult(ids: [id], undo: snapshot)
 
         case .removeProductAlias(let productName, let alias):
-            guard let idx = productIndex(matching: productName) else { return [] }
+            guard let idx = productIndex(matching: productName) else { return .empty }
             let id = products[idx].id
+            let snapshot = UndoSnapshot.productMetadataFields(id: id, aliases: products[idx].aliases, barcode: products[idx].barcode)
             removeProductAlias(id, alias: alias)
-            return [id]
+            return ActionExecutionResult(ids: [id], undo: snapshot)
 
         case .setProductBarcode(let productName, let barcode):
-            guard let idx = productIndex(matching: productName) else { return [] }
+            guard let idx = productIndex(matching: productName) else { return .empty }
             let id = products[idx].id
+            let snapshot = UndoSnapshot.productMetadataFields(id: id, aliases: products[idx].aliases, barcode: products[idx].barcode)
             setProductBarcode(id, barcode: barcode)
-            return [id]
+            return ActionExecutionResult(ids: [id], undo: snapshot)
 
-        case .createRecipe(let title, let servings):
+        case .createRecipe(let title, let servings, let ingredients):
             let recipe = Recipe(title: title, servings: servings)
-            recipes.append(recipe)
-            return [recipe.id]
+            var savedRecipe = recipe
+            savedRecipe.ingredients = ingredients
+            recipes.append(savedRecipe)
+            return ActionExecutionResult(ids: [savedRecipe.id])
 
         case .updateRecipe(let existingTitle, let newTitle, let description, let servings):
-            guard let idx = recipeIndex(matching: existingTitle) else { return [] }
+            guard let idx = recipeIndex(matching: existingTitle) else { return .empty }
+            let snapshot = UndoSnapshot.recipeFields(
+                id: recipes[idx].id,
+                title: recipes[idx].title,
+                description: recipes[idx].description,
+                servings: recipes[idx].servings
+            )
             if let newTitle, !newTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 recipes[idx].title = newTitle
             }
             if let description { recipes[idx].description = description }
             if let servings { recipes[idx].servings = servings }
-            return [recipes[idx].id]
+            return ActionExecutionResult(ids: [recipes[idx].id], undo: snapshot)
 
         case .deleteRecipe(let title):
-            guard let idx = recipeIndex(matching: title) else { return [] }
+            guard let idx = recipeIndex(matching: title) else { return .empty }
+            let snapshot = UndoSnapshot.deletedRecipe(recipes[idx])
             let id = recipes[idx].id
             recipes.remove(at: idx)
-            return [id]
+            return ActionExecutionResult(ids: [id], undo: snapshot)
 
         case .setMealPlanSlot(let date, let mealTypeRaw, let recipeTitle, let freeformText, let isEatingOut, let isLeftover):
+            let resolvedMealType = mealType(fromRawValue: mealTypeRaw)
+            let existingSlot = mealPlans.lazy.flatMap(\.slots).first(where: {
+                Calendar.mealPlanCalendar.isDate($0.date, inSameDayAs: date) && $0.mealType == resolvedMealType
+            })
+            let snapshot: UndoSnapshot = existingSlot.map { .overwrittenMealPlanSlot(slot: $0) } ?? .addedMealPlanSlot(date: date, mealType: resolvedMealType)
             let content: MealSlotContent?
             if let recipeTitle, let recipe = recipes.first(where: { $0.title.lowercased() == recipeTitle.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }) {
                 content = .recipe(recipeID: recipe.id, title: recipe.title)
@@ -1523,24 +1962,30 @@ class AppStore {
             } else {
                 content = nil
             }
-            guard let content else { return [] }
-            setMealPlanSlot(date: date, mealType: mealType(fromRawValue: mealTypeRaw), content: content, isLeftover: isLeftover)
-            return []
+            guard let content else { return .empty }
+            setMealPlanSlot(date: date, mealType: resolvedMealType, content: content, isLeftover: isLeftover)
+            return ActionExecutionResult(ids: [], undo: snapshot)
 
         case .removeMealPlanSlot(let date, let mealTypeRaw):
-            clearMealPlanSlot(date: date, mealType: mealType(fromRawValue: mealTypeRaw))
-            return []
+            let resolvedMealType = mealType(fromRawValue: mealTypeRaw)
+            let existingSlot = mealPlans.lazy.flatMap(\.slots).first(where: {
+                Calendar.mealPlanCalendar.isDate($0.date, inSameDayAs: date) && $0.mealType == resolvedMealType
+            })
+            let snapshot = existingSlot.map { UndoSnapshot.clearedMealPlanSlot(slot: $0) }
+            clearMealPlanSlot(date: date, mealType: resolvedMealType)
+            return ActionExecutionResult(ids: [], undo: snapshot)
 
         case .buildShoppingListFromMealPlan(let weekStart, let oneListPerWeek):
             let resolvedWeekStart = weekStartDate(for: weekStart ?? Date())
             let days = (0..<7).compactMap { Calendar.mealPlanCalendar.date(byAdding: .day, value: $0, to: resolvedWeekStart) }
             let slots = mealPlanSlots(on: days)
             let mode: ShoppingListGenerationMode = oneListPerWeek ? .perWeek : .singleList
-            return generateShoppingList(
+            let generatedIDs = generateShoppingList(
                 fromSlots: slots,
                 mode: mode,
                 listNamePrefix: "Week of \(resolvedWeekStart.formatted(date: .abbreviated, time: .omitted))"
             )
+            return ActionExecutionResult(ids: generatedIDs)
 
         case .createMatkasseBox(let provider, let deliveryWeek, let numberOfMeals, let servingsPerMeal, let price, let notes):
             let box = createMatkasseBox(
@@ -1551,11 +1996,20 @@ class AppStore {
                 price: price,
                 notes: notes
             )
-            return [box.id]
+            return ActionExecutionResult(ids: [box.id])
 
         case .updateMatkasseBox(let existingProvider, let newProvider, let deliveryWeek, let numberOfMeals, let servingsPerMeal, let price, let notes):
             let target = existingProvider.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-            guard let box = matkasseBoxes.first(where: { $0.provider.lowercased() == target }) else { return [] }
+            guard let box = matkasseBoxes.first(where: { $0.provider.lowercased() == target }) else { return .empty }
+            let snapshot = UndoSnapshot.matkasseBoxFields(
+                id: box.id,
+                provider: box.provider,
+                deliveryWeekStartDate: box.deliveryWeekStartDate,
+                numberOfMeals: box.numberOfMeals,
+                servingsPerMeal: box.servingsPerMeal,
+                price: box.price,
+                notes: box.notes
+            )
             updateMatkasseBox(
                 box.id,
                 provider: newProvider,
@@ -1565,36 +2019,38 @@ class AppStore {
                 price: price,
                 notes: notes
             )
-            return [box.id]
+            return ActionExecutionResult(ids: [box.id], undo: snapshot)
 
         case .deleteMatkasseBox(let provider):
             let target = provider.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-            guard let box = matkasseBoxes.first(where: { $0.provider.lowercased() == target }) else { return [] }
+            guard let box = matkasseBoxes.first(where: { $0.provider.lowercased() == target }) else { return .empty }
+            let snapshot = UndoSnapshot.deletedMatkasseBox(box)
             let id = box.id
             deleteMatkasseBox(id)
-            return [id]
+            return ActionExecutionResult(ids: [id], undo: snapshot)
 
         case .addMatkasseMeal(let boxProvider, let mealTitle):
             let trimmedProvider = boxProvider.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-            guard let box = matkasseBoxes.first(where: { $0.provider.lowercased() == trimmedProvider }) else { return [] }
+            guard let box = matkasseBoxes.first(where: { $0.provider.lowercased() == trimmedProvider }) else { return .empty }
             addMatkasseMeal(to: box.id, title: mealTitle)
             let addedMealID = matkasseBoxes.first(where: { $0.id == box.id })?.includedMeals.last?.id
-            return addedMealID.map { [$0] } ?? []
+            return ActionExecutionResult(ids: addedMealID.map { [$0] } ?? [])
 
         case .removeMatkasseMeal(let boxProvider, let mealTitle):
             let trimmedProvider = boxProvider.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
             let trimmedTitle = mealTitle.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
             guard let box = matkasseBoxes.first(where: { $0.provider.lowercased() == trimmedProvider }),
-                  let meal = box.includedMeals.first(where: { $0.title.lowercased() == trimmedTitle }) else { return [] }
+                  let meal = box.includedMeals.first(where: { $0.title.lowercased() == trimmedTitle }) else { return .empty }
+            let snapshot = UndoSnapshot.deletedMatkasseMeal(boxID: box.id, meal: meal)
             removeMatkasseMeal(meal.id, from: box.id)
-            return [meal.id]
+            return ActionExecutionResult(ids: [meal.id], undo: snapshot)
 
         case .changeAppSetting(let key, let value):
             applySettingChange(key: key, value: value)
-            return []
+            return .empty
 
         case .generic:
-            return []
+            return .empty
         }
     }
 
@@ -1867,8 +2323,9 @@ class AppStore {
     /// observation with today's date — same price/quantity/unit/store,
     /// new `observedDate`. Appends rather than mutating the old
     /// observation, matching this app's append-only price history model.
-    func confirmPriceObservation(_ observationID: UUID) {
-        guard let existing = priceObservations.first(where: { $0.id == observationID }) else { return }
+    @discardableResult
+    func confirmPriceObservation(_ observationID: UUID) -> PriceObservation? {
+        guard let existing = priceObservations.first(where: { $0.id == observationID }) else { return nil }
         let refreshed = PriceObservation(
             productID: existing.productID,
             productName: existing.productName,
@@ -1887,6 +2344,7 @@ class AppStore {
         priceObservations.append(refreshed)
         queueCommunityContributionIfNeeded(for: refreshed)
         persistNow()
+        return refreshed
     }
 
     /// Merges a duplicate product into another: every price observation and
@@ -1941,10 +2399,13 @@ class AppStore {
         communityContributions.append(contribution)
     }
 
-    func flagCommunityPriceObservation(_ observationID: UUID) {
-        guard let observation = priceObservations.first(where: { $0.id == observationID }) else { return }
+    @discardableResult
+    func flagCommunityPriceObservation(_ observationID: UUID) -> CommunityContribution? {
+        guard let observation = priceObservations.first(where: { $0.id == observationID }) else { return nil }
         if let index = communityContributions.firstIndex(where: { $0.sourceObservationID == observationID }) {
             communityContributions[index].isFlagged = true
+            persistNow()
+            return communityContributions[index]
         } else {
             let contribution = CommunityContribution(
                 sourceObservation: observation,
@@ -1952,8 +2413,9 @@ class AppStore {
             )
             communityContributions.append(contribution)
             communityContributions[communityContributions.count - 1].isFlagged = true
+            persistNow()
+            return communityContributions[communityContributions.count - 1]
         }
-        persistNow()
     }
 
     func communityConfidence(for observation: PriceObservation) -> PriceConfidence {

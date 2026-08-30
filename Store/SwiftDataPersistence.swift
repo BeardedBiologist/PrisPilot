@@ -96,6 +96,7 @@ struct ChatSessionSnapshot: Codable {
     var id: UUID
     var title: String
     var purpose: String
+    var pendingClarification: ChatPendingClarification?
     var createdAt: Date
     var updatedAt: Date
     var messages: [ChatMessageSnapshot]
@@ -105,6 +106,7 @@ struct ChatSessionSnapshot: Codable {
         id = session.id
         title = session.title
         purpose = session.purpose.rawValue
+        pendingClarification = session.pendingClarification
         createdAt = session.createdAt
         updatedAt = session.updatedAt
         messages = session.messages.compactMap(ChatMessageSnapshot.init(message:))
@@ -116,6 +118,7 @@ struct ChatSessionSnapshot: Codable {
             title: title,
             messages: messages.map(\.chatMessage),
             purpose: ChatSessionPurpose(rawValue: purpose) ?? .general,
+            pendingClarification: pendingClarification,
             createdAt: createdAt,
             updatedAt: updatedAt
         )
@@ -128,6 +131,7 @@ struct ActivityTagSnapshot: Codable {
     var summary: String
     var timestamp: Date
     var affectedRecordIDs: [UUID]
+    var undoSnapshot: UndoSnapshot?
 
     init(tag: ActivityTag) {
         id = tag.id
@@ -135,6 +139,7 @@ struct ActivityTagSnapshot: Codable {
         summary = tag.summary
         timestamp = tag.timestamp
         affectedRecordIDs = tag.affectedRecordIDs
+        undoSnapshot = tag.undoSnapshot
     }
 
     var activityTag: ActivityTag? {
@@ -144,7 +149,8 @@ struct ActivityTagSnapshot: Codable {
             actionType: resolvedActionType,
             summary: summary,
             timestamp: timestamp,
-            affectedRecordIDs: affectedRecordIDs
+            affectedRecordIDs: affectedRecordIDs,
+            undoSnapshot: undoSnapshot
         )
     }
 }
@@ -153,6 +159,7 @@ struct ChatMessageSnapshot: Codable {
     enum Content: Codable {
         case text(String)
         case error(String)
+        case proposedActions(intro: String?, actions: [ProposedAction], memoryProposals: [MemoryProposal])
         case activityTags([ActivityTagSnapshot])
         case onboardingComplete
     }
@@ -160,12 +167,25 @@ struct ChatMessageSnapshot: Codable {
     var id: UUID
     var role: String
     var content: Content
+    var assumptions: [String]
+    var trace: AITraceMetadata?
     var timestamp: Date
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case role
+        case content
+        case assumptions
+        case trace
+        case timestamp
+    }
 
     @MainActor
     init?(message: ChatMessage) {
         id = message.id
         role = message.role.rawValue
+        assumptions = message.assumptions
+        trace = message.trace
         timestamp = message.timestamp
 
         switch message.content {
@@ -177,9 +197,19 @@ struct ChatMessageSnapshot: Codable {
             content = .activityTags(tags.map(ActivityTagSnapshot.init(tag:)))
         case .onboardingComplete:
             content = .onboardingComplete
-        case .proposedActions:
-            return nil
+        case .proposedActions(let intro, let actions, let memoryProposals):
+            content = .proposedActions(intro: intro, actions: actions, memoryProposals: memoryProposals)
         }
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        role = try container.decode(String.self, forKey: .role)
+        content = try container.decode(Content.self, forKey: .content)
+        assumptions = try container.decodeIfPresent([String].self, forKey: .assumptions) ?? []
+        trace = try container.decodeIfPresent(AITraceMetadata.self, forKey: .trace)
+        timestamp = try container.decode(Date.self, forKey: .timestamp)
     }
 
     var chatMessage: ChatMessage {
@@ -190,12 +220,21 @@ struct ChatMessageSnapshot: Codable {
             resolvedContent = .text(text)
         case .error(let message):
             resolvedContent = .error(.unknown(message))
+        case .proposedActions(let intro, let actions, let memoryProposals):
+            resolvedContent = .proposedActions(intro: intro, actions: actions, memoryProposals: memoryProposals)
         case .activityTags(let tags):
             resolvedContent = .activityTags(tags.compactMap(\.activityTag))
         case .onboardingComplete:
             resolvedContent = .onboardingComplete
         }
-        return ChatMessage(id: id, role: resolvedRole, content: resolvedContent, timestamp: timestamp)
+        return ChatMessage(
+            id: id,
+            role: resolvedRole,
+            content: resolvedContent,
+            assumptions: assumptions,
+            trace: trace,
+            timestamp: timestamp
+        )
     }
 }
 

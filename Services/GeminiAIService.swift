@@ -6,6 +6,7 @@ import Foundation
 final class GeminiAIService: AIService, OnboardingAIService, ReceiptParsingAIService {
     let providerName: String
     var isAvailable: Bool = true
+    let capabilities: AIProviderCapabilities
 
     private let apiKey: String
     private let model: String
@@ -18,6 +19,14 @@ final class GeminiAIService: AIService, OnboardingAIService, ReceiptParsingAISer
         self.apiKey = apiKey
         self.model = model
         self.providerName = "Gemini (\(model))"
+        self.capabilities = AIProviderCapabilities(
+            provider: "Gemini",
+            supportsFunctionCalling: true,
+            supportsJSONMode: true,
+            supportsStreaming: false,
+            reportsTokenUsage: false,
+            compatibleFallbackModels: fallbackModels
+        )
     }
 
     // MARK: - AIService
@@ -28,21 +37,52 @@ final class GeminiAIService: AIService, OnboardingAIService, ReceiptParsingAISer
         availableTools: [AIToolDefinition]
     ) async throws -> AIResponse {
         let body = try buildRequestBody(messages: messages, context: context)
-        let response = try await generateContentWithFallback(body: body)
-        return parseResponse(response)
+        let result = try await generateContentWithFallback(
+            body: body,
+            promptVersion: AIPromptCatalog.chatPromptVersion,
+            schemaVersion: AIPromptCatalog.functionCallSchemaVersion,
+            responseFormat: "gemini-function-calls"
+        )
+        return parseResponse(result.response, trace: result.trace)
     }
 
-    private func generateContentWithFallback(body: Data) async throws -> GeminiResponse {
+    private struct GeminiGenerationResult {
+        let response: GeminiResponse
+        let trace: AITraceMetadata
+    }
+
+    private func generateContentWithFallback(
+        body: Data,
+        promptVersion: String,
+        schemaVersion: String,
+        responseFormat: String
+    ) async throws -> GeminiGenerationResult {
+        let startedAt = Date()
+        var fallbackModelsTried: [String] = []
         var lastRecoverableError: AIServiceError?
 
         for modelName in orderedModels {
             for attempt in 1...requestAttemptCount {
                 do {
-                    return try await generateContent(modelName: modelName, body: body)
+                    let response = try await generateContent(modelName: modelName, body: body)
+                    return GeminiGenerationResult(
+                        response: response,
+                        trace: traceMetadata(
+                            modelName: modelName,
+                            promptVersion: promptVersion,
+                            schemaVersion: schemaVersion,
+                            responseFormat: responseFormat,
+                            startedAt: startedAt,
+                            fallbackModelsTried: fallbackModelsTried
+                        )
+                    )
                 } catch let error as AIServiceError {
                     switch error {
                     case .modelOverloaded, .modelUnavailable:
                         lastRecoverableError = error
+                        if !fallbackModelsTried.contains(modelName) {
+                            fallbackModelsTried.append(modelName)
+                        }
                         logRecoverableModelFailure(error, modelName: modelName, attempt: attempt)
                         if attempt < requestAttemptCount {
                             try? await Task.sleep(for: retryDelay)
@@ -58,6 +98,26 @@ final class GeminiAIService: AIService, OnboardingAIService, ReceiptParsingAISer
         }
 
         throw lastRecoverableError ?? AIServiceError.modelOverloaded
+    }
+
+    private func traceMetadata(
+        modelName: String,
+        promptVersion: String,
+        schemaVersion: String,
+        responseFormat: String,
+        startedAt: Date,
+        fallbackModelsTried: [String]
+    ) -> AITraceMetadata {
+        AITraceMetadata(
+            provider: "Gemini",
+            model: modelName,
+            promptVersion: promptVersion,
+            schemaVersion: schemaVersion,
+            responseFormat: responseFormat,
+            latencyMilliseconds: max(0, Int(Date().timeIntervalSince(startedAt) * 1000)),
+            capabilities: capabilities,
+            fallbackModelsTried: fallbackModelsTried
+        )
     }
 
     private var orderedModels: [String] {
@@ -136,9 +196,14 @@ final class GeminiAIService: AIService, OnboardingAIService, ReceiptParsingAISer
         context: AIContext
     ) async throws -> OnboardingAIResult {
         let body = try buildOnboardingRequestBody(question: question, userAnswer: userAnswer, knownAnswers: knownAnswers, context: context)
-        let geminiResponse = try await generateContentWithFallback(body: body)
+        let result = try await generateContentWithFallback(
+            body: body,
+            promptVersion: AIPromptCatalog.onboardingPromptVersion,
+            schemaVersion: "onboarding-json-v1",
+            responseFormat: "json"
+        )
 
-        guard let text = geminiResponse.candidates?.first?.content?.parts.compactMap(\.text).joined(),
+        guard let text = result.response.candidates?.first?.content?.parts.compactMap(\.text).joined(),
               let jsonData = text.data(using: .utf8) else {
             throw AIServiceError.invalidResponse
         }
@@ -211,9 +276,14 @@ final class GeminiAIService: AIService, OnboardingAIService, ReceiptParsingAISer
 
     func parseReceiptLines(rawLines: [String], knownProducts: [Product]) async throws -> ParsedReceipt {
         let body = try buildReceiptParsingRequestBody(rawLines: rawLines, knownProducts: knownProducts)
-        let geminiResponse = try await generateContentWithFallback(body: body)
+        let result = try await generateContentWithFallback(
+            body: body,
+            promptVersion: AIPromptCatalog.receiptParsingPromptVersion,
+            schemaVersion: "receipt-json-v1",
+            responseFormat: "json"
+        )
 
-        guard let text = geminiResponse.candidates?.first?.content?.parts.compactMap(\.text).joined(),
+        guard let text = result.response.candidates?.first?.content?.parts.compactMap(\.text).joined(),
               let jsonData = text.data(using: .utf8) else {
             throw AIServiceError.invalidResponse
         }
@@ -285,84 +355,7 @@ final class GeminiAIService: AIService, OnboardingAIService, ReceiptParsingAISer
     }
 
     private func buildSystemPrompt(context: AIContext) -> String {
-        var lines = [
-            "You are PrisPilot, an AI grocery shopping assistant for Norway.",
-            "Help users track grocery prices, manage shopping lists, plan meals, and find the cheapest options.",
-            "Currency: Norwegian Krone (NOK, symbol: kr). Understand Norwegian store and product names.",
-            "",
-            "SCOPE: Only answer requests that directly support PrisPilot's product areas: grocery prices, shopping lists, recipes, meal planning, grocery budgets, supermarket selection, household shopping, app settings, shopping preferences, and app memory.",
-            "Refuse requests outside that scope, including coding, debugging, general reasoning puzzles, homework, trivia, news, entertainment, essays, translation, or other general assistant tasks. Do not answer the out-of-scope request; briefly redirect to what PrisPilot can do.",
-            "If part of a request is in scope and part is out of scope, handle only the in-scope grocery/app part.",
-            "",
-            "STYLE: For recipe and shopping-list text, use relevant food emojis sparingly so items are easy to scan, e.g. 🍅 Tomatoes or 🥛 Milk. Keep emojis out of structured tool arguments such as productName, listName, storeBranchName, settings, and memory summaries.",
-            "",
-            "CRITICAL: Never perform actions directly. Use tools to PROPOSE changes. The user approves all proposals before execution.",
-            "Each turn must be exactly one of: answer-only, clarification-only, proposal-only, refusal-only, or failure explanation. Do not mix uncertain actions with confident text.",
-            "Ask one concise clarification question instead of proposing actions when the target list, product, store branch, recipe, matkasse box, memory, or date is ambiguous.",
-            "- Group related actions in one response (e.g. record a price AND add to list if user implies both).",
-            "- Propose memory separately from shopping actions.",
-            "- Keep text responses concise; let the proposed actions do the heavy lifting.",
-            "- For prices, include quantity and unit when mentioned.",
-            "- Do not default to Weekly Shop when the user says 'the list' and multiple lists may fit. Ask which list.",
-            "- Do not invent store branches. If the user names only a chain and a specific branch is needed, ask which branch unless the user is clearly adding a new branch.",
-            "- Do not create a recipe when the user asks for an existing recipe's ingredients. Ask if the recipe is missing.",
-            "- Only propose memory when the user states a durable preference, habit, restriction, allergy, or decision rule.",
-            "- Stores are user-managed. If the user asks to add, edit, delete, enable, or disable supermarket branches, propose store actions. Do not assume Oslo branches."
-        ]
-
-        if !context.relevantMemories.isEmpty {
-            lines += ["", "User preferences and memories:"]
-            lines += context.relevantMemories.map { "- \($0.summary)" }
-        }
-        if !context.availableShoppingLists.isEmpty {
-            lines.append("Available shopping lists: \(context.availableShoppingLists.joined(separator: ", "))")
-        }
-        if !context.enabledStoreBranches.isEmpty {
-            lines.append("Known store branches: \(context.enabledStoreBranches.joined(separator: ", "))")
-        }
-        if !context.currentDateISO.isEmpty {
-            lines += [
-                "",
-                "Current date and locale:",
-                "- Date: \(context.currentDateISO)",
-                "- Timezone: \(context.timeZoneIdentifier)",
-                "- \(context.localeSummary)"
-            ]
-        }
-        if !context.settingsSummary.isEmpty {
-            lines += ["", "Current app settings:"]
-            lines += context.settingsSummary.map { "- \($0)" }
-        }
-        if !context.shoppingListSummaries.isEmpty {
-            lines += ["", "Shopping lists and pending items:"]
-            lines += context.shoppingListSummaries.map { "- \($0)" }
-        }
-        if !context.productSummaries.isEmpty {
-            lines += ["", "Known products:"]
-            lines += context.productSummaries.map { "- \($0)" }
-        }
-        if !context.recentPriceSummaries.isEmpty {
-            lines += ["", "Recent price observations:"]
-            lines += context.recentPriceSummaries.map { "- \($0)" }
-        }
-        if !context.recipeSummaries.isEmpty {
-            lines += ["", "Saved recipes:"]
-            lines += context.recipeSummaries.map { "- \($0)" }
-        }
-        if !context.mealPlanSummaries.isEmpty {
-            lines += ["", "Upcoming meal plan:"]
-            lines += context.mealPlanSummaries.map { "- \($0)" }
-        }
-        if !context.matkasseSummaries.isEmpty {
-            lines += ["", "Upcoming matkasse boxes:"]
-            lines += context.matkasseSummaries.map { "- \($0)" }
-        }
-        if !context.memorySummaries.isEmpty {
-            lines += ["", "Memory details with scope and sensitivity:"]
-            lines += context.memorySummaries.map { "- \($0)" }
-        }
-
-        return lines.joined(separator: "\n")
+        AIPromptCatalog.chatSystemPrompt(context: context)
     }
 
     private func functionDeclarations() -> [[String: Any]] {
@@ -382,7 +375,7 @@ final class GeminiAIService: AIService, OnboardingAIService, ReceiptParsingAISer
             ),
             makeFn(
                 name: "addShoppingListItem",
-                desc: "Add an item to a shopping list. Default list name is 'Weekly Shop' if unspecified.",
+                desc: "Add an item to a shopping list. If the list is unspecified or ambiguous, ask which list instead of defaulting.",
                 props: [
                     "listName":    strProp("Shopping list name"),
                     "productName": strProp("Product to add"),
@@ -483,9 +476,19 @@ final class GeminiAIService: AIService, OnboardingAIService, ReceiptParsingAISer
                 desc: "Add all ingredients from a saved recipe to a shopping list.",
                 props: [
                     "recipeName": strProp("Existing saved recipe's title"),
-                    "listName":   strProp("Shopping list name to add ingredients to. Default 'Weekly Shop' if unspecified.")
+                    "listName":   strProp("Shopping list name to add ingredients to. Ask which list if unspecified or ambiguous.")
                 ],
                 required: ["recipeName", "listName"]
+            ),
+            makeFn(
+                name: "createRecipe",
+                desc: "Create and save a recipe in PrisPilot. Use this when the user asks to create or save a recipe; include structured ingredients whenever they are stated or reasonably implied by the requested dish.",
+                props: [
+                    "title":       strProp("Recipe title"),
+                    "servings":    numProp("Number of servings"),
+                    "ingredients": recipeIngredientsProp()
+                ],
+                required: ["title", "servings"]
             ),
             makeFn(
                 name: "updateRecipe",
@@ -596,6 +599,53 @@ final class GeminiAIService: AIService, OnboardingAIService, ReceiptParsingAISer
                     "sensitivityLevel": enumProp("Sensitivity", ["Standard", "Sensitive", "Health"])
                 ],
                 required: ["summary", "category"]
+            ),
+            makeFn(
+                name: "updateMemory",
+                desc: "Edit an existing saved memory. Ask for clarification if the memory target is ambiguous.",
+                props: [
+                    "existingSummary":  strProp("Existing memory summary or phrase to match"),
+                    "newSummary":       strProp("Replacement memory summary, if changing it"),
+                    "category":         enumProp("New memory category, if changing it", ["Hard Requirement", "Preference", "Habit", "Decision Pattern"]),
+                    "strength":         enumProp("New constraint strength, if changing it", ["Absolute", "Strong", "Preference", "Weak"]),
+                    "sensitivityLevel": enumProp("New sensitivity, if changing it", ["Standard", "Sensitive", "Health"])
+                ],
+                required: ["existingSummary"]
+            ),
+            makeFn(
+                name: "deleteMemory",
+                desc: "Remove an existing saved memory. Only use when the user clearly asks PrisPilot to forget something.",
+                props: [
+                    "summary": strProp("Existing memory summary or phrase to match")
+                ],
+                required: ["summary"]
+            ),
+            makeFn(
+                name: "createHousehold",
+                desc: "Create a local household for shared grocery planning.",
+                props: [
+                    "name":             strProp("Household name"),
+                    "ownerDisplayName": strProp("Owner display name, if the user gives one")
+                ],
+                required: ["name"]
+            ),
+            makeFn(
+                name: "inviteHouseholdMember",
+                desc: "Create a household invitation. Requires an existing household.",
+                props: [
+                    "email": strProp("Invitee email address, if provided")
+                ],
+                required: []
+            ),
+            makeFn(
+                name: "updateHouseholdMember",
+                desc: "Edit a household member's display name or role.",
+                props: [
+                    "userID":      strProp("Existing household member user ID"),
+                    "displayName": strProp("New display name, if changing it"),
+                    "role":        enumProp("New role, if changing it", ["Owner", "Member"])
+                ],
+                required: ["userID"]
             ),
             makeFn(
                 name: "createProduct",
@@ -772,13 +822,29 @@ final class GeminiAIService: AIService, OnboardingAIService, ReceiptParsingAISer
     private func enumProp(_ desc: String, _ values: [String]) -> [String: Any] {
         ["type": "STRING", "description": desc, "enum": values]
     }
+    private func recipeIngredientsProp() -> [String: Any] {
+        [
+            "type": "ARRAY",
+            "description": "Structured recipe ingredients. Include every grocery ingredient the user gives or asks you to infer for the recipe.",
+            "items": [
+                "type": "OBJECT",
+                "properties": [
+                    "productName": ["type": "STRING", "description": "Ingredient product name"],
+                    "quantity": ["type": "NUMBER", "description": "Ingredient quantity number"],
+                    "unit": ["type": "STRING", "description": "Ingredient unit", "enum": ["g", "kg", "ml", "l", "stk", "pk"]],
+                    "notes": ["type": "STRING", "description": "Optional notes"]
+                ],
+                "required": ["productName", "quantity", "unit"]
+            ]
+        ]
+    }
 
     // MARK: - Response Parsing
 
-    private func parseResponse(_ response: GeminiResponse) -> AIResponse {
+    private func parseResponse(_ response: GeminiResponse, trace: AITraceMetadata?) -> AIResponse {
         guard let candidate = response.candidates?.first,
               let content = candidate.content else {
-            return AIResponse(textContent: nil, proposedActions: [], memoryProposals: [], error: .invalidResponse)
+            return AIResponse(textContent: nil, proposedActions: [], memoryProposals: [], error: .invalidResponse, trace: trace)
         }
 
         var textParts: [String] = []
@@ -812,7 +878,13 @@ final class GeminiAIService: AIService, OnboardingAIService, ReceiptParsingAISer
             memoryProposals: memoryProposals
         )
 
-        return draft.legacyResponse()
+        return AIResponse(
+            textContent: draft.clarification?.question ?? draft.assistantText,
+            proposedActions: draft.actions.map(\.proposedAction),
+            memoryProposals: draft.memoryProposals,
+            error: draft.error,
+            trace: trace
+        )
     }
 
     private func inferredTurnOutcome(
@@ -1002,6 +1074,19 @@ final class GeminiAIService: AIService, OnboardingAIService, ReceiptParsingAISer
                 riskLevel: .low
             ))
 
+        case "createRecipe":
+            guard let title = args["title"]?.stringValue else { return .none }
+            let servings = args["servings"]?.doubleValue.map { max(1, Int($0)) } ?? 4
+            let ingredients = parseRecipeIngredients(args["ingredients"])
+            return .action(ProposedAction(
+                type: .createRecipe,
+                summary: ingredients.isEmpty
+                    ? "Create recipe: \(title)"
+                    : "Create recipe: \(title) with \(ingredients.count) ingredients",
+                payload: .createRecipe(title: title, servings: servings, ingredients: ingredients),
+                riskLevel: .low
+            ))
+
         case "updateRecipe":
             guard let existingTitle = args["existingTitle"]?.stringValue else { return .none }
             let newTitle = args["newTitle"]?.stringValue
@@ -1144,6 +1229,64 @@ final class GeminiAIService: AIService, OnboardingAIService, ReceiptParsingAISer
 
             let memory = AIMemory(summary: summary, category: category, strength: strength, sensitivityLevel: sensitivity)
             return .memory(MemoryProposal(memory: memory, reason: "Based on what you mentioned"))
+
+        case "updateMemory":
+            guard let existingSummary = args["existingSummary"]?.stringValue else { return .none }
+            let category = args["category"]?.stringValue.flatMap { MemoryCategory(rawValue: $0) }
+            let strength = args["strength"]?.stringValue.flatMap { ConstraintStrength(rawValue: $0) }
+            let sensitivity = args["sensitivityLevel"]?.stringValue.flatMap { SensitivityLevel(rawValue: $0) }
+            return .action(ProposedAction(
+                type: .updateMemory,
+                summary: "Update memory: \(existingSummary)",
+                payload: .updateMemory(
+                    existingSummary: existingSummary,
+                    newSummary: args["newSummary"]?.stringValue,
+                    category: category,
+                    strength: strength,
+                    sensitivityLevel: sensitivity
+                ),
+                riskLevel: .medium
+            ))
+
+        case "deleteMemory":
+            guard let summary = args["summary"]?.stringValue else { return .none }
+            return .action(ProposedAction(
+                type: .deleteMemory,
+                summary: "Forget: \(summary)",
+                payload: .deleteMemory(summary: summary),
+                riskLevel: .medium
+            ))
+
+        case "createHousehold":
+            guard let name = args["name"]?.stringValue else { return .none }
+            return .action(ProposedAction(
+                type: .createHousehold,
+                summary: "Create household: \(name)",
+                payload: .createHousehold(name: name, ownerDisplayName: args["ownerDisplayName"]?.stringValue),
+                riskLevel: .medium
+            ))
+
+        case "inviteHouseholdMember":
+            return .action(ProposedAction(
+                type: .inviteHouseholdMember,
+                summary: args["email"]?.stringValue.map { "Invite \($0) to household" } ?? "Create household invitation",
+                payload: .inviteHouseholdMember(email: args["email"]?.stringValue),
+                riskLevel: .medium
+            ))
+
+        case "updateHouseholdMember":
+            guard let userID = args["userID"]?.stringValue else { return .none }
+            let role = args["role"]?.stringValue.flatMap { HouseholdRole(rawValue: $0) }
+            return .action(ProposedAction(
+                type: .updateHouseholdMember,
+                summary: "Update household member: \(userID)",
+                payload: .updateHouseholdMember(
+                    userID: userID,
+                    displayName: args["displayName"]?.stringValue,
+                    role: role
+                ),
+                riskLevel: .medium
+            ))
 
         case "createProduct":
             guard let name = args["name"]?.stringValue else { return .none }
@@ -1326,6 +1469,26 @@ final class GeminiAIService: AIService, OnboardingAIService, ReceiptParsingAISer
     private func formatDecimal(_ d: Decimal) -> String {
         let n = NSDecimalNumber(decimal: d)
         return n.stringValue
+    }
+
+    private func parseRecipeIngredients(_ value: GeminiArgValue?) -> [RecipeIngredient] {
+        guard let items = value?.arrayValue else { return [] }
+        return items.compactMap { item in
+            guard let object = item.objectValue,
+                  let name = object["productName"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !name.isEmpty,
+                  let quantity = object["quantity"]?.doubleValue,
+                  quantity > 0,
+                  let unitRaw = object["unit"]?.stringValue,
+                  let unit = MeasurementUnit(rawValue: unitRaw) else {
+                return nil
+            }
+            var ingredient = RecipeIngredient(productName: name, quantity: quantity, unit: unit)
+            if let notes = object["notes"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines), !notes.isEmpty {
+                ingredient.notes = notes
+            }
+            return ingredient
+        }
     }
 
     private static let dateFormatter: DateFormatter = {

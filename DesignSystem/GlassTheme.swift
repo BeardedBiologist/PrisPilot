@@ -61,6 +61,10 @@ extension EnvironmentValues {
     /// editable controls in two places.
     @Entry var switchToSettingsTab: () -> Void = {}
 
+    @Entry var switchToShoppingTab: () -> Void = {}
+    @Entry var switchToPricesTab: () -> Void = {}
+    @Entry var switchToRecipesTab: () -> Void = {}
+
     /// Lets any scrollable feature view request that the floating tab bar be
     /// shown or hidden. RootTabView wires this to its own visibility state;
     /// defaults to a no-op so previews don't crash.

@@ -11,6 +11,13 @@ protocol AIService {
 
     var isAvailable: Bool { get }
     var providerName: String { get }
+    var capabilities: AIProviderCapabilities { get }
+}
+
+extension AIService {
+    var capabilities: AIProviderCapabilities {
+        AIProviderCapabilities(provider: providerName)
+    }
 }
 
 protocol OnboardingAIService {
@@ -102,6 +109,62 @@ struct AIResponse {
     let proposedActions: [ProposedAction]
     let memoryProposals: [MemoryProposal]
     let error: AIServiceError?
+    let trace: AITraceMetadata?
+    let assumptions: [String]
+
+    init(
+        textContent: String?,
+        proposedActions: [ProposedAction],
+        memoryProposals: [MemoryProposal],
+        error: AIServiceError?,
+        trace: AITraceMetadata? = nil,
+        assumptions: [String] = []
+    ) {
+        self.textContent = textContent
+        self.proposedActions = proposedActions
+        self.memoryProposals = memoryProposals
+        self.error = error
+        self.trace = trace
+        self.assumptions = assumptions
+    }
+}
+
+// MARK: - Provider Metadata
+
+struct AIProviderCapabilities: Codable {
+    let provider: String
+    let supportsFunctionCalling: Bool
+    let supportsJSONMode: Bool
+    let supportsStreaming: Bool
+    let reportsTokenUsage: Bool
+    let compatibleFallbackModels: [String]
+
+    init(
+        provider: String,
+        supportsFunctionCalling: Bool = false,
+        supportsJSONMode: Bool = false,
+        supportsStreaming: Bool = false,
+        reportsTokenUsage: Bool = false,
+        compatibleFallbackModels: [String] = []
+    ) {
+        self.provider = provider
+        self.supportsFunctionCalling = supportsFunctionCalling
+        self.supportsJSONMode = supportsJSONMode
+        self.supportsStreaming = supportsStreaming
+        self.reportsTokenUsage = reportsTokenUsage
+        self.compatibleFallbackModels = compatibleFallbackModels
+    }
+}
+
+struct AITraceMetadata: Codable {
+    let provider: String
+    let model: String
+    let promptVersion: String
+    let schemaVersion: String
+    let responseFormat: String
+    let latencyMilliseconds: Int
+    let capabilities: AIProviderCapabilities
+    let fallbackModelsTried: [String]
 }
 
 struct OnboardingAIResult {
@@ -124,7 +187,7 @@ struct OnboardingAIResult {
 
 // MARK: - Memory Proposal
 
-struct MemoryProposal: Identifiable {
+struct MemoryProposal: Identifiable, Codable {
     let id: UUID
     let memory: AIMemory
     let reason: String

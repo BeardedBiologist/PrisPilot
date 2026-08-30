@@ -8,6 +8,7 @@ struct ChatView: View {
     @State private var speechInput = SpeechInputService()
     @FocusState private var inputFocused: Bool
     @State private var sendBounce = false
+    @State private var pendingReviewTarget: UUID?
 
     var body: some View {
         NavigationStack {
@@ -113,10 +114,13 @@ struct ChatView: View {
                     ForEach(viewModel.messages) { message in
                         MessageBubbleView(
                             message: message,
+                            quickActions: quickActions(after: message),
                             onApproveAll: { viewModel.approveAll(in: message.id) },
                             onApprove: { id in viewModel.approve(actionID: id, in: message.id) },
                             onReject: { id in viewModel.reject(actionID: id, in: message.id) },
                             onRejectAll: { viewModel.rejectAll(in: message.id) },
+                            onEdit: { id, payload, summary in viewModel.editAction(actionID: id, in: message.id, newPayload: payload, newSummary: summary) },
+                            onUsePrompt: usePrompt,
                             onStartNewChat: { viewModel.startNewChat() }
                         )
                         .id(message.id)
@@ -143,6 +147,12 @@ struct ChatView: View {
             .onChange(of: viewModel.isTyping) { _, typing in
                 if typing { scrollToBottom(proxy: proxy) }
             }
+            .onChange(of: pendingReviewTarget) { _, target in
+                guard let target else { return }
+                withAnimation(.easeOut(duration: 0.25)) {
+                    proxy.scrollTo(target, anchor: .center)
+                }
+            }
         }
     }
 
@@ -161,6 +171,16 @@ struct ChatView: View {
         return viewModel.messages.filter { $0.role == .user }.isEmpty && !viewModel.isTyping
     }
 
+    private var pendingProposals: [ChatPendingProposal] {
+        guard let sessionID = store.selectedChatSessionID else { return [] }
+        return store.pendingProposals(for: sessionID)
+    }
+
+    private var pendingClarification: ChatPendingClarification? {
+        guard let sessionID = store.selectedChatSessionID else { return nil }
+        return store.pendingClarification(for: sessionID)
+    }
+
     private func scrollToBottom(proxy: ScrollViewProxy) {
         withAnimation(.easeOut(duration: 0.25)) {
             if viewModel.isTyping {
@@ -175,11 +195,21 @@ struct ChatView: View {
 
     private var inputBar: some View {
         VStack(spacing: 10) {
-            if shouldShowSuggestions {
-                SuggestedPromptGrid { prompt in
-                    viewModel.inputText = prompt
+            if let pending = pendingProposals.first {
+                PendingProposalReviewBar(proposal: pending) {
+                    pendingReviewTarget = pending.messageID
+                }
+            }
+
+            if let clarification = pendingClarification, !clarification.candidates.isEmpty {
+                ClarificationChoiceStrip(candidates: clarification.candidates) { choice in
+                    viewModel.inputText = choice
                     inputFocused = true
                 }
+            }
+
+            if shouldShowSuggestions {
+                SuggestedPromptGrid(prompts: contextualPromptOptions, onSelect: usePrompt)
             }
 
             if speechInput.isRecording {
@@ -260,6 +290,53 @@ struct ChatView: View {
         }
     }
 
+    private var contextualPromptOptions: [ChatQuickAction] {
+        if store.shoppingLists.isEmpty {
+            return [
+                ChatQuickAction(systemImage: "cart.badge.plus", title: "Create list", prompt: "Create a shopping list for this week"),
+                ChatQuickAction(systemImage: "tag.fill", title: "Log price", prompt: "I paid kr 39.90 for 400 g minced beef at Kiwi"),
+                ChatQuickAction(systemImage: "storefront", title: "Add store", prompt: "Add Rema 1000 Pindsle as one of my stores")
+            ]
+        }
+        if store.recentPriceSummariesForSuggestions.isEmpty {
+            return [
+                ChatQuickAction(systemImage: "tag.fill", title: "Log price", prompt: "I paid kr 24.90 for 1 l milk at Kiwi"),
+                ChatQuickAction(systemImage: "wand.and.sparkles", title: "Optimize", prompt: "Optimize my weekly shopping list"),
+                ChatQuickAction(systemImage: "fork.knife", title: "Plan meals", prompt: "Plan three cheap dinners for this week")
+            ]
+        }
+        return [
+            ChatQuickAction(systemImage: "cart.fill", title: "Add item", prompt: "Add milk to the weekly list"),
+            ChatQuickAction(systemImage: "tag.fill", title: "Compare", prompt: "Compare recent milk prices across my stores"),
+            ChatQuickAction(systemImage: "brain.head.profile", title: "Memory", prompt: "What do you remember about my shopping preferences?")
+        ]
+    }
+
+    private func quickActions(after message: ChatMessage) -> [ChatQuickAction] {
+        guard message.role == .assistant else { return [] }
+        switch message.content {
+        case .text(let text):
+            let lowercased = text.lowercased()
+            if lowercased.contains("?") {
+                return []
+            }
+            return Array(contextualPromptOptions.prefix(2))
+        case .activityTags(let tags):
+            guard !tags.isEmpty else { return [] }
+            return [
+                ChatQuickAction(systemImage: "arrow.uturn.backward", title: "Undo?", prompt: "Can you help me undo the last AI change if it was wrong?"),
+                ChatQuickAction(systemImage: "wand.and.sparkles", title: "Next step", prompt: "What should I do next with these changes?")
+            ]
+        default:
+            return []
+        }
+    }
+
+    private func usePrompt(_ prompt: String) {
+        viewModel.inputText = prompt
+        inputFocused = true
+    }
+
     private var canSend: Bool {
         !viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !viewModel.isSending
     }
@@ -319,23 +396,17 @@ struct HeaderIconButton: View {
 }
 
 struct SuggestedPromptGrid: View {
+    let prompts: [ChatQuickAction]
     let onSelect: (String) -> Void
-
-    private let prompts = [
-        ("tag.fill", "Log a price", "I paid kr 39.90 for 400 g minced beef at Kiwi"),
-        ("cart.fill", "Build a list", "Make a shopping list for tacos under kr 250"),
-        ("fork.knife", "Plan dinner", "Plan three cheap dinners for this week"),
-        ("brain.head.profile", "Remember this", "Remember that I prefer Kiwi and Rema 1000")
-    ]
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                ForEach(prompts, id: \.1) { prompt in
+                ForEach(prompts) { prompt in
                     Button {
-                        onSelect(prompt.2)
+                        onSelect(prompt.prompt)
                     } label: {
-                        Label(prompt.1, systemImage: prompt.0)
+                        Label(prompt.title, systemImage: prompt.systemImage)
                             .font(.caption.weight(.semibold))
                             .lineLimit(1)
                             .foregroundStyle(.primary)
@@ -352,6 +423,85 @@ struct SuggestedPromptGrid: View {
             .padding(.horizontal, 1)
         }
         .frame(minHeight: 34)
+    }
+}
+
+struct PendingProposalReviewBar: View {
+    let proposal: ChatPendingProposal
+    let onReview: () -> Void
+
+    var body: some View {
+        Button(action: onReview) {
+            HStack(spacing: 8) {
+                Image(systemName: proposal.failedActionCount > 0 ? "exclamationmark.triangle.fill" : "tray.full.fill")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(proposal.failedActionCount > 0 ? .orange : .blue)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(reviewTitle)
+                        .font(.caption.weight(.semibold))
+                    Text(proposal.firstSummary)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                Spacer()
+                Image(systemName: "chevron.up")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var reviewTitle: String {
+        if proposal.failedActionCount > 0 {
+            return "\(proposal.failedActionCount) failed action\(proposal.failedActionCount == 1 ? "" : "s") need review"
+        }
+        return "\(proposal.pendingActionCount) pending change\(proposal.pendingActionCount == 1 ? "" : "s")"
+    }
+}
+
+struct ClarificationChoiceStrip: View {
+    let candidates: [String]
+    let onSelect: (String) -> Void
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(candidates, id: \.self) { candidate in
+                    Button {
+                        onSelect(candidate)
+                    } label: {
+                        Label(candidate, systemImage: "checkmark.bubble")
+                            .font(.caption.weight(.semibold))
+                            .lineLimit(1)
+                            .foregroundStyle(.primary)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(Color(.secondarySystemBackground), in: Capsule())
+                            .overlay {
+                                Capsule().stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                            }
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 1)
+        }
+        .frame(minHeight: 34)
+    }
+}
+
+private extension AppStore {
+    var recentPriceSummariesForSuggestions: [PriceObservation] {
+        Array(priceObservations.prefix(3))
     }
 }
 

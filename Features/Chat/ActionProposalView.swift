@@ -1,16 +1,63 @@
 import SwiftUI
 
+// MARK: - Proposal Alert
+
+private enum ProposalAlert: Identifiable {
+    case highRiskAction(UUID, String)
+    case highRiskApproveAll(Int)
+
+    var id: String {
+        switch self {
+        case .highRiskAction(let id, _): return id.uuidString
+        case .highRiskApproveAll: return "approveAll"
+        }
+    }
+}
+
+// MARK: - Action Group
+
+private struct ActionGroup: Identifiable {
+    let domain: ActionDomain
+    let actions: [ProposedAction]
+    var id: String { domain.rawValue }
+}
+
+// MARK: - Action Proposal View
+
 struct ActionProposalView: View {
     let intro: String?
+    var assumptions: [String] = []
     let actions: [ProposedAction]
     let memoryProposals: [MemoryProposal]
     var onApproveAll: () -> Void
     var onApprove: (UUID) -> Void
     var onReject: (UUID) -> Void
     var onRejectAll: () -> Void
+    var onEdit: ((UUID, ProposedActionPayload, String) -> Void)? = nil
+
+    @State private var editingAction: ProposedAction?
+    @State private var activeAlert: ProposalAlert?
 
     private var hasPending: Bool {
         actions.contains { $0.status == .pending } || !memoryProposals.isEmpty
+    }
+
+    private var highRiskPendingCount: Int {
+        actions.filter { $0.status == .pending && $0.riskLevel == .high }.count
+    }
+
+    private var groupedActions: [ActionGroup] {
+        var groups: [ActionDomain: [ProposedAction]] = [:]
+        var order: [ActionDomain] = []
+        for action in actions {
+            let domain = action.type.domain
+            if groups[domain] == nil {
+                groups[domain] = []
+                order.append(domain)
+            }
+            groups[domain]!.append(action)
+        }
+        return order.map { ActionGroup(domain: $0, actions: groups[$0]!) }
     }
 
     var body: some View {
@@ -23,10 +70,14 @@ struct ActionProposalView: View {
                     .textSelection(.enabled)
             }
 
+            if !assumptions.isEmpty {
+                AssumptionSummaryView(assumptions: assumptions)
+            }
+
             VStack(alignment: .leading, spacing: 0) {
                 cardHeader
                 Divider().opacity(0.6)
-                actionRows
+                actionRowsGrouped
                 memoryRows
             }
             .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
@@ -49,7 +100,12 @@ struct ActionProposalView: View {
                     .tint(.red)
 
                     Button {
-                        onApproveAll()
+                        let count = highRiskPendingCount
+                        if count > 0 {
+                            activeAlert = .highRiskApproveAll(count)
+                        } else {
+                            onApproveAll()
+                        }
                     } label: {
                         Label("Approve", systemImage: "checkmark")
                             .frame(maxWidth: .infinity)
@@ -59,7 +115,33 @@ struct ActionProposalView: View {
                 }
             }
         }
+        .sheet(item: $editingAction) { action in
+            ProposalEditorSheet(action: action) { newPayload, newSummary in
+                onEdit?(action.id, newPayload, newSummary)
+            }
+        }
+        .alert(item: $activeAlert) { (alert: ProposalAlert) -> Alert in
+            switch alert {
+            case .highRiskAction(let id, let summary):
+                return Alert(
+                    title: Text("Confirm Action"),
+                    message: Text("\"\(summary)\" is high-risk and may be difficult to reverse."),
+                    primaryButton: .destructive(Text("Proceed Anyway")) { onApprove(id) },
+                    secondaryButton: .cancel()
+                )
+            case .highRiskApproveAll(let count):
+                let s = count == 1 ? "" : "s"
+                return Alert(
+                    title: Text("Approve All Actions"),
+                    message: Text("This batch contains \(count) high-risk action\(s). Some may be difficult to reverse."),
+                    primaryButton: .destructive(Text("Approve All")) { onApproveAll() },
+                    secondaryButton: .cancel()
+                )
+            }
+        }
     }
+
+    // MARK: - Card Header
 
     private var cardHeader: some View {
         HStack(spacing: 8) {
@@ -85,14 +167,56 @@ struct ActionProposalView: View {
         .padding(.vertical, 9)
     }
 
-    private var actionRows: some View {
-        ForEach(Array(actions.enumerated()), id: \.element.id) { i, action in
-            VStack(spacing: 0) {
-                if i > 0 { Divider().padding(.leading, 58).opacity(0.6) }
-                ActionRow(action: action, onApprove: { onApprove(action.id) }, onReject: { onReject(action.id) })
+    // MARK: - Grouped Action Rows
+
+    @ViewBuilder
+    private var actionRowsGrouped: some View {
+        let groups = groupedActions
+        let showDomains = groups.count > 1
+
+        ForEach(Array(groups.enumerated()), id: \.element.id) { groupIdx, group in
+            if showDomains {
+                if groupIdx > 0 { Divider().opacity(0.6) }
+                domainHeader(group.domain)
+            }
+            ForEach(Array(group.actions.enumerated()), id: \.element.id) { actionIdx, action in
+                VStack(spacing: 0) {
+                    if showDomains || actionIdx > 0 {
+                        Divider().padding(.leading, 58).opacity(0.6)
+                    }
+                    ActionRow(
+                        action: action,
+                        onApprove: {
+                            if action.riskLevel == .high {
+                                activeAlert = .highRiskAction(action.id, action.summary)
+                            } else {
+                                onApprove(action.id)
+                            }
+                        },
+                        onReject: { onReject(action.id) },
+                        onEdit: onEdit != nil ? { editingAction = action } : nil
+                    )
+                }
             }
         }
     }
+
+    private func domainHeader(_ domain: ActionDomain) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: domain.systemImage)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(.secondary)
+            Text(domain.rawValue)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .textCase(.uppercase)
+        }
+        .padding(.horizontal, 12)
+        .padding(.top, 8)
+        .padding(.bottom, 4)
+    }
+
+    // MARK: - Memory Rows
 
     private var memoryRows: some View {
         ForEach(memoryProposals) { proposal in
@@ -104,6 +228,31 @@ struct ActionProposalView: View {
     }
 }
 
+private struct AssumptionSummaryView: View {
+    let assumptions: [String]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Label("Assumptions", systemImage: "questionmark.circle")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            ForEach(assumptions, id: \.self) { assumption in
+                Text(assumption)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(Color(.tertiarySystemBackground), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+        }
+    }
+}
+
 // MARK: - Action Row
 
 struct ActionRow: View {
@@ -111,6 +260,7 @@ struct ActionRow: View {
     let action: ProposedAction
     var onApprove: () -> Void
     var onReject: () -> Void
+    var onEdit: (() -> Void)? = nil
 
     var body: some View {
         HStack(alignment: .center, spacing: 10) {
@@ -144,6 +294,18 @@ struct ActionRow: View {
         switch action.status {
         case .pending:
             HStack(spacing: 6) {
+                if let onEdit {
+                    Button { onEdit() } label: {
+                        Image(systemName: "pencil")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 26, height: 26)
+                            .background(Color(.systemGray5), in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Edit \(action.type.displayName)")
+                }
+
                 Button { onReject() } label: {
                     Image(systemName: "xmark")
                         .font(.system(size: 11, weight: .bold))
@@ -155,11 +317,11 @@ struct ActionRow: View {
                 .accessibilityLabel("Reject \(action.type.displayName)")
 
                 Button { onApprove() } label: {
-                    Image(systemName: "checkmark")
+                    Image(systemName: action.riskLevel == .high ? "exclamationmark.triangle.fill" : "checkmark")
                         .font(.system(size: 11, weight: .bold))
-                        .foregroundStyle(.green)
+                        .foregroundStyle(action.riskLevel == .high ? .orange : .green)
                         .frame(width: 26, height: 26)
-                        .background(Color.green.opacity(0.12), in: Circle())
+                        .background((action.riskLevel == .high ? Color.orange : Color.green).opacity(0.12), in: Circle())
                 }
                 .buttonStyle(.plain)
                 .disabled(!action.validationResult.isValid)

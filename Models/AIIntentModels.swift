@@ -35,7 +35,7 @@ struct AIDraftAction: Identifiable {
 }
 
 struct AIIntentDraft {
-    static let schemaVersion = "2026-08-30.phase4.legacy-function-calls"
+    static let schemaVersion = "2026-08-30.phase9.legacy-function-draft-v1"
 
     var outcome: AITurnOutcome
     var assistantText: String?
@@ -76,6 +76,7 @@ struct AIIntentDraft {
             return AIIntentDraft(
                 outcome: .proposal,
                 assistantText: response.textContent,
+                assumptions: response.assumptions,
                 actions: draftActions,
                 memoryProposals: response.memoryProposals
             )
@@ -93,7 +94,8 @@ struct AIIntentDraft {
             textContent: clarification?.question ?? assistantText,
             proposedActions: actions.map(\.proposedAction),
             memoryProposals: memoryProposals,
-            error: error
+            error: error,
+            assumptions: assumptions
         )
     }
 }

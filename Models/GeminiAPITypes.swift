@@ -39,6 +39,8 @@ enum GeminiArgValue: Decodable {
     case string(String)
     case number(Double)
     case bool(Bool)
+    case array([GeminiArgValue])
+    case object([String: GeminiArgValue])
     case null
 
     init(from decoder: Decoder) throws {
@@ -46,10 +48,14 @@ enum GeminiArgValue: Decodable {
         if let v = try? c.decode(Bool.self)   { self = .bool(v);   return }
         if let v = try? c.decode(Double.self)  { self = .number(v); return }
         if let v = try? c.decode(String.self)  { self = .string(v); return }
+        if let v = try? c.decode([GeminiArgValue].self) { self = .array(v); return }
+        if let v = try? c.decode([String: GeminiArgValue].self) { self = .object(v); return }
         self = .null
     }
 
     var stringValue: String?  { if case .string(let v) = self { return v }; return nil }
     var doubleValue: Double?  { if case .number(let v) = self { return v }; return nil }
     var boolValue:   Bool?    { if case .bool(let v)   = self { return v }; return nil }
+    var arrayValue: [GeminiArgValue]? { if case .array(let v) = self { return v }; return nil }
+    var objectValue: [String: GeminiArgValue]? { if case .object(let v) = self { return v }; return nil }
 }

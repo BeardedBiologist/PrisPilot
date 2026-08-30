@@ -20,6 +20,16 @@ struct SettingsView: View {
         )
     }
 
+    private var aiCapabilitySummary: String {
+        let capabilities = store.currentAIService.capabilities
+        var labels: [String] = []
+        if capabilities.supportsFunctionCalling { labels.append("Functions") }
+        if capabilities.supportsJSONMode { labels.append("JSON") }
+        if capabilities.supportsStreaming { labels.append("Streaming") }
+        if capabilities.reportsTokenUsage { labels.append("Tokens") }
+        return labels.isEmpty ? "Basic" : labels.joined(separator: ", ")
+    }
+
     var body: some View {
         NavigationStack {
             List {
@@ -78,6 +88,11 @@ struct SettingsView: View {
                         AIPermissionsView()
                     }
                     LabeledContent("Provider", value: store.currentAIService.providerName)
+                    #if DEBUG
+                    LabeledContent("Prompt", value: AIPromptCatalog.chatPromptVersion)
+                    LabeledContent("Schema", value: AIPromptCatalog.chatSchemaVersion)
+                    LabeledContent("Capabilities", value: aiCapabilitySummary)
+                    #endif
                     HStack(spacing: 8) {
                         Image(systemName: store.isUsingLiveAI ? "checkmark.circle.fill" : "circle.dashed")
                             .foregroundStyle(store.isUsingLiveAI ? .green : Color(.systemGray3))

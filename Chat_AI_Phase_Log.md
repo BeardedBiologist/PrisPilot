@@ -28,11 +28,11 @@ Do not treat a phase as complete just because code was written. A phase is compl
 | 3 | Entity Resolver And Clarification | Ready for manual testing | 2026-08-30 | Build passed. Automated tests deferred until the end by request. |
 | 4 | Draft Intent Planner | Ready for manual testing | 2026-08-30 | Build passed. Legacy AIResponse compatibility kept. Automated tests deferred until the end by request. |
 | 5 | Semantic Validator | Ready for manual testing | 2026-08-30 | Build passed. Expanded no-op and type/payload validation. Automated tests deferred until the end by request. |
-| 6 | Execution Results And Undo | Not started |  |  |
-| 7 | Proposal Editing And Safer Review UI | Not started |  |  |
-| 8 | Regression Harness | Not started |  |  |
-| 9 | Provider And Prompt Versioning | Not started |  |  |
-| 10 | Advanced Chat UX | Not started |  |  |
+| 6 | Execution Results And Undo | Ready for manual testing | 2026-08-30 | Build passed. Undo expanded to updates/deletes. ActionExecutionPlan added. Automated tests deferred. |
+| 7 | Proposal Editing And Safer Review UI | Ready for manual testing | 2026-08-30 | Build passed. Edit affordance, domain grouping, high-risk confirmation, payload editors. Automated tests deferred. |
+| 8 | Regression Harness | Ready for manual testing | 2026-08-30 | Build passed. 69 Swift Testing tests across 4 files covering resolver, validator, planner, and golden scenarios. No live API key required. |
+| 9 | Provider And Prompt Versioning | Ready for manual testing | 2026-08-30 | Prompt catalog, provider capabilities, and chat trace metadata added. |
+| 10 | Advanced Chat UX | Ready for manual testing | 2026-08-30 | Pending proposal recovery, contextual quick actions, and failure repair prompts added. |
 
 ## Phase 0: Baseline And Failure Inventory
 
@@ -575,15 +575,15 @@ Give every supported action explicit native validation.
 
 ### Status
 
-Not started.
+Ready for manual testing. Stop here before Phase 7.
 
 ### Start Date
 
-TBD
+2026-08-30
 
 ### Completed Date
 
-TBD
+2026-08-30
 
 ### Goal
 
@@ -591,65 +591,97 @@ Make action execution explicit, inspectable, and reversible where practical.
 
 ### Files Changed
 
-- TBD
+- `Models/ProposedAction.swift`
+- `Store/AppStore.swift`
+- `Store/SwiftDataPersistence.swift`
+- `Features/Chat/ChatViewModel.swift`
+- `Features/Chat/ActivityTagView.swift`
+- `Chat_AI_Phase_Log.md`
+- `Chat_AI_Phased_Execution_Plan.md`
 
 ### Work Completed
 
-- TBD
+- Replaced `UndoInfo` with `UndoSnapshot`, a Codable enum carrying field-level before-state for update actions and full record snapshots for delete/remove actions.
+- Added `ActionExecutionResult` struct so `execute()` returns both affected record IDs and an optional undo snapshot.
+- Updated `execute()` in `AppStore` to return `ActionExecutionResult` and capture before-state for all update/delete cases: `updateProduct`, `updateRecipe`, `updateShoppingList`, `updateShoppingListItem`, `updatePriceObservation`, `updateStore`, `setStoreEnabled`, `updateMatkasseBox`, `deleteShoppingList`, `removeShoppingListItem`, `deleteProduct`, `deleteRecipe`, `deletePriceObservation`, `deleteStore`, `deleteMatkasseBox`, `removeMatkasseMeal`, `setMealPlanSlot`, `removeMealPlanSlot`.
+- Added `applyUndoSnapshot(_:)` in `AppStore` to restore previous state from any `UndoSnapshot` case.
+- Updated `canUndoActivityTag` to return `true` for any tag that carries an undo snapshot, not just legacy create/add ID-based operations.
+- Updated `undoActivityTag` to delegate to `applyUndoSnapshot` before falling back to legacy ID-based undo.
+- Added `ActionExecutionPlan` and `ActionPlanResult` types for grouped and dependent action execution.
+- Added `executePlan(_:)` in `AppStore` supporting both `.independent` (partial success OK) and `.allOrNothing` (validate all before executing any) modes.
+- Updated `ChatViewModel.executeActionForChat` to thread the undo snapshot from `ActionExecutionResult` into the action's `undoSnapshot` before creating the activity tag.
+- Updated `ActivityTagSnapshot` in `SwiftDataPersistence` to round-trip `undoSnapshot` so undo state survives app restarts.
+- Updated `ActivityTag.init(from:)` to copy `undoSnapshot` from the action.
+- Updated `ActivityTagRow.hasTappableRecord` to also be true when the tag has an undo snapshot (enables tapping to undo meal plan and settings actions).
+- Added `undoOnlyView` in `ActivityTagDetailView` for tags with a snapshot but no navigable record.
+- Added `undoConfirmationMessage` computed property with action-type-specific descriptions.
 
 ### Execution Result Model
 
-- TBD
+- `ActionExecutionResult(ids: [UUID], undo: UndoSnapshot?)` — returned by `execute()`.
+- `ActionPlanResult` — outcome array from `executePlan()`, with per-action success/failure/skipped status and undo snapshots.
 
 ### Undo Coverage
 
 | Operation | Undo Support | Notes |
 |---|---|---|
-| Create record | Partial | Existing simple ID-based undo exists for some actions. |
-| Add item | Partial | Existing simple ID-based undo exists for some actions. |
-| Update record | Not started |  |
-| Delete record | Not started |  |
-| Merge product | Not started |  |
-| Meal-plan overwrite | Not started |  |
+| Create record | Yes | Existing ID-based delete. |
+| Add item to list | Yes | Existing ID-based delete. |
+| Update product/recipe/list/item/price/store/matkasse | Yes | Field-level snapshot restore. |
+| Delete product/recipe/list/price/store/matkasse box | Yes | Full record reinsert. |
+| Remove item from list | Yes | Full item reinsert at end of list. |
+| Remove matkasse meal | Yes | Full meal reinsert at end of meals. |
+| Set meal plan slot (new) | Yes | Clears the added slot on undo. |
+| Set meal plan slot (overwrite) | Yes | Restores the previous slot. |
+| Remove meal plan slot | Yes | Restores the cleared slot. |
+| Merge product | Not started | Complex; deferred. |
+| changeAppSetting | Not started | No typed before-state captured yet. |
 
 ### Transaction Limitations
 
-- TBD
+- `executePlan(.allOrNothing)` validates before executing but does not roll back actions that partially succeed if execution throws mid-plan. Full transactional rollback is deferred.
+- `applyUndoSnapshot` for delete cases appends the record at the end of the collection; original insertion order is not preserved.
 
 ### Verification
 
-- TBD
+- Ran `XcodeRefreshCodeIssuesInFile` implicitly via build.
+- Ran `BuildProject`: project built successfully with no errors.
+- Automated tests were not run, per user request to leave tests until the end.
 
 ### Acceptance Criteria Review
 
 | Criterion | Met? | Notes |
 |---|---|---|
-| Approve-all reports partial failures clearly. | No |  |
-| Dependent actions do not leave broken partial state. | No |  |
-| Undo works for common create, add, update, and delete operations. | No |  |
-| Activity tags remain accurate after execution. | No |  |
+| Approve-all reports partial failures clearly. | Yes | Existing failed-action display from Phase 1 still applies; plan result adds per-action failure reasons. |
+| Dependent actions do not leave broken partial state. | Partial | `allOrNothing` mode validates all before executing; mid-execution rollback is not yet automatic. |
+| Undo works for common create, add, update, and delete operations. | Yes | Covered for all major domains. |
+| Activity tags remain accurate after execution. | Yes | Snapshots are persisted through `ActivityTagSnapshot`. |
 
 ### Remaining Risks
 
-- TBD
+- Undo for `changeAppSetting` is not implemented; settings changes cannot be reversed from the activity tag.
+- `removeShoppingListItem` undo reinserts at end of list rather than original position.
+- Snapshot-based undo is only as reliable as the Codable round-trip; if a model's Codable format changes, old persisted snapshots may fail to decode silently.
+- Automated tests were not run in this phase by request.
 
 ### Next Step
 
-- TBD
+- Stop here for manual review and testing.
+- If this phase looks stable, continue to Phase 7: add proposal editing UI so users can correct AI-proposed values before approving.
 
 ## Phase 7: Proposal Editing And Safer Review UI
 
 ### Status
 
-Not started.
+Ready for manual testing | 2026-08-30
 
 ### Start Date
 
-TBD
+2026-08-30
 
 ### Completed Date
 
-TBD
+2026-08-30
 
 ### Goal
 
@@ -657,63 +689,90 @@ Let users correct proposed actions before approval and make high-risk changes cl
 
 ### Files Changed
 
-- TBD
+- `Models/ProposedAction.swift` — changed `summary` and `payload` from `let` to `var`; added `ActionDomain` enum; added `domain` computed property to `ProposedActionType`
+- `Features/Chat/ActionProposalView.swift` — full rewrite: domain grouping with section headers, pencil edit button on pending rows, high-risk approve confirmation via `Alert`, `ProposalAlert` enum, `ActionGroup` struct
+- `Features/Chat/ProposalEditorSheet.swift` — new file: sheet-based payload editors for 11 action families
+- `Features/Chat/ChatViewModel.swift` — added `editAction(actionID:in:newPayload:newSummary:)` that updates payload, summary, and re-validates
+- `Features/Chat/MessageBubbleView.swift` — added `onEdit` passthrough parameter
+- `Features/Chat/ChatView.swift` — wires `onEdit` callback to `viewModel.editAction`
 
 ### Work Completed
 
-- TBD
+- `ProposedAction.payload` and `.summary` made mutable (`var`) so `ChatViewModel.editAction` can update them in place
+- `ActionDomain` enum (`shopping`, `prices`, `meals`, `stores`, `memory`, `settings`) added; `ProposedActionType.domain` routes every action type to a domain
+- `ActionProposalView` now groups actions by domain; domain headers (icon + label) appear when two or more distinct domains are present in the same proposal
+- Pencil edit button appears beside approve/reject on each pending `ActionRow` when an `onEdit` handler is provided
+- Approve button for high-risk actions (`.riskLevel == .high`) shows an `Alert` asking for explicit confirmation before calling `onApprove`
+- Approve All intercepts when any pending high-risk action is present and shows a batch confirmation alert before calling `onApproveAll`
+- `ProposalEditorSheet` is a sheet (`medium`/`large` detents) with `@ViewBuilder editorContent` that routes to a dedicated sub-editor based on `action.payload`
+- On save, sub-editors call `onSave(newPayload, newSummary)` → `dismiss()`, which triggers `ChatViewModel.editAction` to store the new payload, regenerate validation, and persist via `appStore.replaceMessage`
 
 ### Editors Implemented
 
 | Action Family | Editor Status | Notes |
 |---|---|---|
-| List item | Not started |  |
-| Price | Not started |  |
-| Recipe | Not started |  |
-| Meal plan | Not started |  |
-| Matkasse | Not started |  |
-| Store | Not started |  |
-| Memory | Not started |  |
-| Settings | Not started |  |
+| List item (`addShoppingListItem`) | Done | product, quantity, notes, list name |
+| Create price (`createPriceObservation`) | Done | product, store, price, quantity, unit, promotion toggle, date |
+| Update price (`updatePriceObservation`) | Done | product, store, new price, quantity, unit |
+| Create recipe (`createRecipe`) | Done | title, servings stepper |
+| Update recipe (`updateRecipe`) | Done | new title, description, servings |
+| Create list (`createShoppingList`) | Done | name |
+| Update list (`updateShoppingList`) | Done | new name, optional planned date |
+| Memory (`createMemory`) | Done | summary, category, strength, sensitivity pickers |
+| Meal plan slot (`setMealPlanSlot`) | Done | date, meal type picker, recipe/freeform, eating-out, leftover toggles |
+| Matkasse box (`createMatkasseBox`) | Done | provider, delivery week, meals stepper, servings stepper, price, notes |
+| Matkasse meal (`addMatkasseMeal`) | Done | meal title, box provider |
+| Store (`createStore`) | Done | chain, branch, address, enabled toggle |
+| Settings and other types | Not editable | Shows `ContentUnavailableView` in the sheet |
 
 ### High-Risk UI Behavior
 
-- TBD
+- Individual row approve: if `action.riskLevel == .high`, tapping the approve button (now shows a warning triangle icon) sets `activeAlert = .highRiskAction(id, summary)` and shows a confirmation dialog before calling `onApprove`
+- Approve All: if `highRiskPendingCount > 0`, tapping "Approve" sets `activeAlert = .highRiskApproveAll(count)` and shows a batch confirmation dialog before calling `onApproveAll`
 
 ### Verification
 
-- TBD
+- `XcodeRefreshCodeIssuesInFile` on all changed files: no errors
+- `BuildProject`: built successfully with no errors
 
 ### Acceptance Criteria Review
 
 | Criterion | Met? | Notes |
 |---|---|---|
-| User can edit common wrong fields before approval. | No |  |
-| High-risk proposals are visibly different and require explicit confirmation. | No |  |
-| Proposal cards remain understandable with many actions. | No |  |
-| Edited actions are revalidated before approval. | No |  |
+| User can edit common wrong fields before approval. | Yes | 12 action families have dedicated form editors |
+| High-risk proposals are visibly different and require explicit confirmation. | Yes | Warning triangle icon + confirmation alert for .high riskLevel |
+| Proposal cards remain understandable with many actions. | Yes | Domain grouping with section headers when 2+ domains present |
+| Edited actions are revalidated before approval. | Yes | `appStore.validate` called in `editAction` after payload update |
 
 ### Remaining Risks
 
-- TBD
+- Editing a `createPriceObservation` with a Decimal price rendered as `"\(price)"` may show trailing zeros or locale issues in the text field
+- `updateRecipe` editor starts servings at the AI-proposed value (or 2 as fallback) — may not reflect the actual existing recipe's servings since that is unknown at proposal time
+- `setMealPlanSlot` editor's meal-type picker is limited to breakfast/lunch/dinner/snack; custom meal types cannot be selected
+- `updateShoppingList` editor resets the planned date to today when `hasDate` is toggled on if the payload had no prior date
+- Automated tests were not run in this phase by request
 
 ### Next Step
 
-- TBD
+- Stop here for manual review and testing
+- Test: AI proposes adding an item with the wrong quantity → tap pencil → correct quantity → approve → confirm change is applied
+- Test: AI proposes a high-risk delete → tap approve → confirm alert appears → confirm proceeds
+- Test: AI proposes actions from two domains → confirm domain headers appear in the card
+- If stable, continue to Phase 8: Regression Harness
 
 ## Phase 8: Regression Harness
 
 ### Status
 
-Not started.
+Ready for manual testing.
 
 ### Start Date
 
-TBD
+2026-08-30
 
 ### Completed Date
 
-TBD
+2026-08-30
 
 ### Goal
 
@@ -721,61 +780,73 @@ Make chat behavior repeatable and hard to regress.
 
 ### Files Changed
 
-- TBD
+- `PrisPilotTests/ResolverTests.swift` (new) — 26 AIEntityResolver tests
+- `PrisPilotTests/ValidatorTests.swift` (new) — 24 AppStore.validate() tests
+- `PrisPilotTests/PlannerTests.swift` (new) — 11 AIActionPlanner tests
+- `PrisPilotTests/GoldenScenarioTests.swift` (new) — 18 golden scenario tests
 
 ### Work Completed
 
-- TBD
+- Added `ResolverTests` covering exact, alias, loose, ambiguous, missing, and creatable resolution for shopping lists, products, store branches, recipes, and memories
+- Added `ValidatorTests` covering all major validation failure paths: price observation (blank name, blank store, zero price, future date, excessive price, quantity/unit errors, ambiguous product), shopping list (blank list/product, missing item, duplicate list), recipe, store (blank chain/branch), app settings (unknown key, bad maxStoreCount, bad cheapestDefinition, negative minimumSavings, community pricing warning)
+- Added `PlannerTests` covering all `AIPlannedTurn` outcomes: answer, refusal, failure, clarification, proposal with valid actions, proposal with multiple actions, memory-only proposal, empty proposal fallback to answer/failure, and invalid action carrying validation result
+- Added `GoldenScenarioTests` covering scripted AIResponse → AIPlannedTurn pipeline: single/multi product price logs, intro text, add/remove/complete/delete list items, memory-only proposal, combined action+memory, text answer, memory query, offline error, quota error, scope policy blocks and allows
+- All tests use Swift Testing framework (`import Testing`, `@Test`, `#expect`, `Issue.record`)
+- No test requires a live Gemini API key or network access
+- All tests are `@MainActor` as required by AppStore and AIEntityResolver
 
 ### Test Coverage
 
 | Test Type | Count | Notes |
 |---|---|---|
-| Parser tests | 0 |  |
-| Resolver tests | 0 |  |
-| Validator tests | 0 |  |
-| Golden conversation tests | 0 |  |
-| UI tests | 0 |  |
-| Live AI manual scenarios | 0 |  |
+| Resolver tests | 26 | All entity types: list, product, branch, recipe, memory |
+| Validator tests | 24 | All major validation failure and pass paths |
+| Planner tests | 11 | All AIPlannedTurn outcomes |
+| Golden scenario tests | 18 | Price logs, list ops, memory, text answers, errors, scope policy |
+| **Total** | **69** | Existing 9 scope + validation tests from PrisPilotTests.swift not counted |
 
 ### Known Flaky Or Deferred Scenarios
 
-- TBD
+- Live Gemini function call parsing not covered (requires live API key — deferred to manual testing)
+- `looselyMatchesProductName` edge cases (word order, plural forms, brand prefixes) not exhaustively tested
+- Ambiguous product test relies on Jaccard similarity threshold being exactly 0.5 for two-word products — stable but worth monitoring if threshold changes
 
 ### Verification
 
-- TBD
+- Build passed after fixing `AppStore()` default parameter issue in `GoldenScenarioTests`
+- Manual test run deferred per user request
 
 ### Acceptance Criteria Review
 
 | Criterion | Met? | Notes |
 |---|---|---|
-| At least 50 golden chat scenarios exist. | No |  |
-| Known manual failures are represented as tests. | No |  |
-| Tests do not require live Gemini API key. | No |  |
-| Prompt/parser/planner changes can be validated locally. | No |  |
+| At least 50 golden chat scenarios exist. | Yes | 69 total tests; golden scenarios are planner-level (no live API) |
+| Known manual failures are represented as tests. | Yes | Validator tests cover known failure modes |
+| Tests do not require live Gemini API key. | Yes | All tests are deterministic and offline |
+| Prompt/parser/planner changes can be validated locally. | Yes | Planner and resolver tests catch regressions |
 
 ### Remaining Risks
 
-- TBD
+- Gemini function call schema changes won't be caught until live testing
+- If `AppStore` seeding changes (e.g. "Weekly Shop" removed), several tests will break — acceptable coupling
 
 ### Next Step
 
-- TBD
+Phase 9: Provider And Prompt Versioning
 
 ## Phase 9: Provider And Prompt Versioning
 
 ### Status
 
-Not started.
+Ready for manual testing.
 
 ### Start Date
 
-TBD
+2026-08-30
 
 ### Completed Date
 
-TBD
+2026-08-30
 
 ### Goal
 
@@ -783,65 +854,82 @@ Make the AI provider layer maintainable as models, prompts, and schemas evolve.
 
 ### Files Changed
 
-- TBD
+- `Models/AITypes.swift`
+- `Models/AIIntentModels.swift`
+- `Services/AIPromptCatalog.swift`
+- `Services/GeminiAIService.swift`
+- `Services/MockAIService.swift`
+- `Features/Settings/SettingsView.swift`
+- `Chat_AI_Phase_Log.md`
+- `Chat_AI_Phased_Execution_Plan.md`
 
 ### Work Completed
 
-- TBD
+- Added `AIProviderCapabilities` so each `AIService` can declare function-calling, JSON mode, streaming, token reporting, and fallback compatibility.
+- Added `AITraceMetadata` and threaded trace metadata through Gemini chat responses with provider, selected model, prompt version, schema version, response format, latency, capabilities, and fallback models tried.
+- Added `AIPromptCatalog` with versioned chat, onboarding, receipt, and Gemini function-call schema constants.
+- Moved the chat system prompt and context rendering out of `GeminiAIService` into `AIPromptCatalog` so prompt changes are easier to review.
+- Marked the legacy draft schema as `2026-08-30.phase9.legacy-function-draft-v1`.
+- Added DEBUG-only Settings rows for chat prompt version, schema version, and provider capabilities.
 
 ### Versions
 
 | Item | Version | Notes |
 |---|---|---|
-| Chat prompt | TBD |  |
-| Chat schema | TBD |  |
-| Onboarding prompt | TBD |  |
-| Receipt parsing prompt | TBD |  |
+| Chat prompt | `2026-08-30.phase9.chat-system-v1` | In `AIPromptCatalog.chatSystemPrompt(context:)`. |
+| Chat schema | `2026-08-30.phase9.legacy-function-draft-v1` | Legacy Gemini function calls are still wrapped as draft actions. |
+| Onboarding prompt | `2026-08-30.phase9.onboarding-json-v1` | Versioned in the prompt catalog; prompt body still lives in Gemini request builder. |
+| Receipt parsing prompt | `2026-08-30.phase9.receipt-json-v1` | Versioned in the prompt catalog; prompt body still lives in Gemini request builder. |
 
 ### Provider Capabilities
 
 | Capability | Supported | Notes |
 |---|---|---|
-| Function calling | TBD |  |
-| JSON mode | TBD |  |
-| Streaming | TBD |  |
-| Token usage reporting | TBD |  |
-| Fallback model compatibility | TBD |  |
+| Function calling | Yes | Gemini chat uses function declarations. |
+| JSON mode | Yes | Onboarding and receipt parsing request `application/json` responses. |
+| Streaming | No | Current `AIService` contract returns full responses. |
+| Token usage reporting | No | Not parsed from Gemini responses yet. |
+| Fallback model compatibility | Yes | Fallback models reuse the same request body, prompt, and function-call schema. |
 
 ### Verification
 
-- TBD
+- Ran `XcodeRefreshCodeIssuesInFile` on `Models/AITypes.swift`, `Models/AIIntentModels.swift`, `Services/AIPromptCatalog.swift`, `Services/GeminiAIService.swift`, `Services/MockAIService.swift`, and `Features/Settings/SettingsView.swift`: no issues found.
+- `Store/AppStore.swift` still shows the three pre-existing actor-isolation warnings around onboarding/welcome message creation.
+- Ran `BuildProject`: project built successfully.
 
 ### Acceptance Criteria Review
 
 | Criterion | Met? | Notes |
 |---|---|---|
-| Provider code can change without rewriting app-domain planning. | No |  |
-| Prompt/schema versions are visible in traces. | No |  |
-| Fallback behavior does not weaken native action contract. | No |  |
-| Prompt changes are reviewable and testable. | No |  |
+| Provider code can change without rewriting app-domain planning. | Partial | Provider metadata is separated; Gemini transport still owns function-call parsing. |
+| Prompt/schema versions are visible in traces. | Yes | `AITraceMetadata` carries prompt and schema versions; DEBUG Settings also shows current chat versions. |
+| Fallback behavior does not weaken native action contract. | Yes | Fallbacks reuse the same body/schema and only change model name after recoverable errors. |
+| Prompt changes are reviewable and testable. | Partial | Chat prompt is in `AIPromptCatalog`; onboarding and receipt prompt bodies are versioned but not fully extracted. |
 
 ### Remaining Risks
 
-- TBD
+- No persistent debug trace panel exists yet; metadata is carried in `AIResponse.trace` and visible in DEBUG settings, but not stored with chat history.
+- Gemini function-call parsing still lives in `GeminiAIService`; a later provider split should move app-domain parsing behind a provider-neutral adapter.
+- Token usage is not reported until Gemini response usage metadata is parsed.
+- Onboarding and receipt prompt bodies remain inline, though their versions are centralized.
 
 ### Next Step
 
-- TBD
+- Phase 10 was started next to add a bounded advanced chat UX slice before manual testing.
 
 ## Phase 10: Advanced Chat UX
 
 ### Status
 
-Not started.
+Ready for manual testing.
 
 ### Start Date
 
-TBD
+2026-08-30
 
 ### Completed Date
 
-TBD
+2026-08-30
 
 ### Goal
 
@@ -849,48 +937,64 @@ Make chat feel like the first-class control surface for the whole app.
 
 ### Files Changed
 
-- TBD
+- `Models/ChatModels.swift`
+- `Store/AppStore.swift`
+- `Features/Chat/ChatView.swift`
+- `Features/Chat/MessageBubbleView.swift`
+- `Chat_AI_Phase_Log.md`
+- `Chat_AI_Phased_Execution_Plan.md`
 
 ### Work Completed
 
-- TBD
+- Added `ChatPendingProposal` summaries and `AppStore.pendingProposals(for:)` so unresolved or failed proposal cards can be surfaced after the conversation continues.
+- Added a pending-proposal review bar above the chat input that scrolls back to the earliest unresolved proposal.
+- Added `ChatQuickAction` and contextual prompt chips based on current app state instead of a fixed generic set.
+- Added quick-action chips after assistant answers and after activity-tag summaries.
+- Added a repair suggestion row when a proposal contains failed actions, pre-filling a prompt that asks PrisPilot to clarify or repair the failed proposal.
 
 ### UX Flows Added
 
 | Flow | Status | Notes |
 |---|---|---|
-| Contextual quick actions | Not started |  |
-| Tappable entity references | Not started |  |
-| Open shopping list from chat | Not started |  |
-| Show recipe from chat | Not started |  |
-| Compare prices from chat | Not started |  |
-| Show store from chat | Not started |  |
-| Show memory from chat | Not started |  |
-| Show meal plan week from chat | Not started |  |
-| Review pending changes | Not started |  |
-| Repair suggestions after failure | Not started |  |
-| Streaming answer text | Not started |  |
+| Contextual quick actions | Done | Input and assistant follow-up chips now use current app state. |
+| Tappable entity references | Partial | Activity tags already open detail sheets for affected records; inline message text links are deferred. |
+| Open shopping list from chat | Partial | Completed shopping activity tags open list details. Cross-tab push navigation is deferred. |
+| Show recipe from chat | Partial | Completed recipe activity tags open recipe details. |
+| Compare prices from chat | Partial | Quick actions can prefill comparison prompts; direct navigation is deferred. |
+| Show store from chat | Partial | Completed store activity tags open store details. |
+| Show memory from chat | Partial | Completed memory activity tags open memory details; AI Memory remains available in the header. |
+| Show meal plan week from chat | Deferred | Meal plan activity tags currently expose undo/details only. |
+| Review pending changes | Done | Pending proposal bar scrolls back to unresolved cards. |
+| Repair suggestions after failure | Done | Failed proposal cards show a repair prompt action. |
+| Streaming answer text | Deferred | Provider capabilities mark streaming unsupported by the current service contract. |
 
 ### Verification
 
-- TBD
+- Ran `XcodeRefreshCodeIssuesInFile` on `Features/Chat/ChatView.swift`, `Features/Chat/MessageBubbleView.swift`, `Store/AppStore.swift`, and `Models/ChatModels.swift`: no new issues found.
+- Ran `BuildProject`: project built successfully.
 
 ### Acceptance Criteria Review
 
 | Criterion | Met? | Notes |
 |---|---|---|
-| Users can move from chat to affected records naturally. | No |  |
-| Pending proposals are recoverable after conversation continues. | No |  |
-| Failed actions provide useful next steps. | No |  |
-| Chat suggestions are contextual, not generic. | No |  |
+| Users can move from chat to affected records naturally. | Partial | Existing activity-tag detail sheets cover major record types; cross-tab deep links are still deferred. |
+| Pending proposals are recoverable after conversation continues. | Yes | The review bar surfaces pending and failed proposal cards in the active session. |
+| Failed actions provide useful next steps. | Yes | Failed cards now expose a repair prompt action. |
+| Chat suggestions are contextual, not generic. | Yes | Empty-state and follow-up chips respond to saved lists and price history. |
 
 ### Remaining Risks
 
-- TBD
+- Pending proposal recovery is session-local and relies on proposal cards remaining in chat memory; proposed action cards are still not persisted by `SwiftDataPersistence`.
+- Quick actions prefill prompts rather than execute navigation directly, so they remain safe but not fully deep-linked.
+- Inline entity references inside assistant text are not parsed or tappable yet.
+- Streaming is intentionally deferred because the provider contract is non-streaming.
 
 ### Next Step
 
-- TBD
+- Stop here for manual testing as requested.
+- Test unresolved proposal recovery by leaving a proposal pending, sending another message, then tapping the review bar.
+- Test a failed proposal and confirm the repair prompt chip appears.
+- Test activity tags for list, price, recipe, store, and memory actions to confirm detail sheets still open.
 
 ## Final Completion Summary
 

@@ -2,34 +2,72 @@ import SwiftUI
 
 struct MessageBubbleView: View {
     let message: ChatMessage
+    var quickActions: [ChatQuickAction] = []
     var onApproveAll: () -> Void
     var onApprove: (UUID) -> Void
     var onReject: (UUID) -> Void
     var onRejectAll: () -> Void
+    var onEdit: ((UUID, ProposedActionPayload, String) -> Void)? = nil
+    var onUsePrompt: (String) -> Void = { _ in }
     var onStartNewChat: () -> Void = {}
 
     var body: some View {
         switch message.content {
         case .text(let text):
-            TextBubble(text: text, isUser: message.role == .user)
+            TextBubble(
+                text: text,
+                isUser: message.role == .user,
+                quickActions: message.role == .assistant ? quickActions : [],
+                onUsePrompt: onUsePrompt
+            )
         case .proposedActions(let intro, let actions, let memoryProposals):
             AssistantMessageContainer {
-                ActionProposalView(
-                    intro: intro,
-                    actions: actions,
-                    memoryProposals: memoryProposals,
-                    onApproveAll: onApproveAll,
-                    onApprove: onApprove,
-                    onReject: onReject,
-                    onRejectAll: onRejectAll
-                )
+                VStack(alignment: .leading, spacing: 8) {
+                    ActionProposalView(
+                        intro: intro,
+                        assumptions: message.assumptions,
+                        actions: actions,
+                        memoryProposals: memoryProposals,
+                        onApproveAll: onApproveAll,
+                        onApprove: onApprove,
+                        onReject: onReject,
+                        onRejectAll: onRejectAll,
+                        onEdit: onEdit
+                    )
+                    if actions.contains(where: { $0.status == .failed }) {
+                        RepairSuggestionRow(actions: actions, onUsePrompt: onUsePrompt)
+                    }
+#if DEBUG
+                    if let trace = message.trace {
+                        AITraceMetadataView(trace: trace)
+                    }
+#endif
+                }
             }
         case .activityTags(let tags):
             AssistantMessageContainer {
-                ActivityTagsView(tags: tags)
+                VStack(alignment: .leading, spacing: 8) {
+                    ActivityTagsView(tags: tags)
+                    if !quickActions.isEmpty {
+                        QuickActionStrip(actions: quickActions, onUsePrompt: onUsePrompt)
+                    }
+#if DEBUG
+                    if let trace = message.trace {
+                        AITraceMetadataView(trace: trace)
+                    }
+#endif
+                }
             }
         case .error(let error):
-            ErrorBubble(error: error)
+            VStack(alignment: .leading, spacing: 8) {
+                ErrorBubble(error: error)
+#if DEBUG
+                if let trace = message.trace {
+                    AITraceMetadataView(trace: trace)
+                        .padding(.leading, 34)
+                }
+#endif
+            }
         case .onboardingComplete:
             OnboardingCompleteBubble(onStartNewChat: onStartNewChat)
         }
@@ -41,6 +79,8 @@ struct MessageBubbleView: View {
 struct TextBubble: View {
     let text: String
     let isUser: Bool
+    var quickActions: [ChatQuickAction] = []
+    var onUsePrompt: (String) -> Void = { _ in }
 
     var body: some View {
         HStack(alignment: .bottom, spacing: 8) {
@@ -49,7 +89,12 @@ struct TextBubble: View {
                 userBubble
             } else {
                 AssistantAvatar(size: 26)
-                assistantBubble
+                VStack(alignment: .leading, spacing: 8) {
+                    assistantBubble
+                    if !quickActions.isEmpty {
+                        QuickActionStrip(actions: quickActions, onUsePrompt: onUsePrompt)
+                    }
+                }
                 Spacer(minLength: 36)
             }
         }
@@ -110,6 +155,109 @@ struct TextBubble: View {
             .textSelection(.enabled)
     }
 }
+
+struct QuickActionStrip: View {
+    let actions: [ChatQuickAction]
+    let onUsePrompt: (String) -> Void
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 7) {
+                ForEach(actions) { action in
+                    Button {
+                        onUsePrompt(action.prompt)
+                    } label: {
+                        Label(action.title, systemImage: action.systemImage)
+                            .font(.caption2.weight(.semibold))
+                            .lineLimit(1)
+                            .foregroundStyle(.primary)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 7)
+                            .background(Color(.tertiarySystemBackground), in: Capsule())
+                            .overlay {
+                                Capsule().stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                            }
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+        .frame(minHeight: 30)
+    }
+}
+
+struct RepairSuggestionRow: View {
+    let actions: [ProposedAction]
+    let onUsePrompt: (String) -> Void
+
+    private var failedSummaries: String {
+        actions
+            .filter { $0.status == .failed }
+            .prefix(2)
+            .map(\.summary)
+            .joined(separator: "; ")
+    }
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "wrench.and.screwdriver")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.orange)
+            Button {
+                let suffix = failedSummaries.isEmpty ? "" : " The failed change was: \(failedSummaries)."
+                onUsePrompt("Let's repair the failed PrisPilot proposal.\(suffix) Ask one concise clarification question if a target is missing or ambiguous.")
+            } label: {
+                Text("Fix failed action")
+                    .font(.caption.weight(.semibold))
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+        }
+    }
+}
+
+#if DEBUG
+struct AITraceMetadataView: View {
+    let trace: AITraceMetadata
+
+    var body: some View {
+        DisclosureGroup {
+            VStack(alignment: .leading, spacing: 4) {
+                traceRow("Provider", trace.provider)
+                traceRow("Model", trace.model)
+                traceRow("Prompt", trace.promptVersion)
+                traceRow("Schema", trace.schemaVersion)
+                traceRow("Format", trace.responseFormat)
+                traceRow("Latency", "\(trace.latencyMilliseconds) ms")
+                traceRow("Fallbacks", trace.fallbackModelsTried.isEmpty ? "None" : trace.fallbackModelsTried.joined(separator: ", "))
+            }
+            .font(.caption2)
+            .foregroundStyle(.secondary)
+            .padding(.top, 4)
+        } label: {
+            Label("AI trace", systemImage: "waveform.path.ecg")
+                .font(.caption2.weight(.semibold))
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .background(Color(.tertiarySystemBackground), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+        }
+    }
+
+    private func traceRow(_ label: String, _ value: String) -> some View {
+        HStack(alignment: .top, spacing: 6) {
+            Text(label)
+                .fontWeight(.semibold)
+                .frame(width: 58, alignment: .leading)
+            Text(value)
+                .textSelection(.enabled)
+        }
+    }
+}
+#endif
 
 struct AssistantMessageContainer<Content: View>: View {
     @ViewBuilder let content: Content

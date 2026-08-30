@@ -32,7 +32,7 @@ struct ActivityTagRow: View {
     private var isMemory: Bool { tag.actionType.isMemoryAction }
     private var color: Color { isMemory ? .purple : .green }
     private var icon: String { isMemory ? "brain.head.profile" : "checkmark.circle.fill" }
-    private var hasTappableRecord: Bool { !tag.affectedRecordIDs.isEmpty }
+    private var hasTappableRecord: Bool { !tag.affectedRecordIDs.isEmpty || tag.undoSnapshot != nil }
 
     var body: some View {
         Button {
@@ -76,6 +76,10 @@ struct ActivityTagRow: View {
 struct ActivityTagDetailView: View {
     @Environment(AppStore.self) private var store
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.switchToShoppingTab) private var switchToShoppingTab
+    @Environment(\.switchToPricesTab) private var switchToPricesTab
+    @Environment(\.switchToRecipesTab) private var switchToRecipesTab
+    @Environment(\.switchToSettingsTab) private var switchToSettingsTab
     let tag: ActivityTag
     @State private var showUndoConfirmation = false
     @State private var showUndoFailed = false
@@ -97,7 +101,7 @@ struct ActivityTagDetailView: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This removes the record created by this AI action from local app data.")
+            Text(undoConfirmationMessage)
         }
         .alert("Could not undo", isPresented: $showUndoFailed) {
             Button("OK", role: .cancel) {}
@@ -111,7 +115,10 @@ struct ActivityTagDetailView: View {
         switch tag.actionType {
         case .createShoppingList, .updateShoppingList,
              .addShoppingListItem, .updateShoppingListItem,
-             .completeShoppingListItem, .removeShoppingListItem:
+             .completeShoppingListItem, .removeShoppingListItem,
+             .setShoppingListStatus, .optimizeShoppingList, .moveShoppingListItem,
+             .substituteShoppingListItem, .addRecipeToShoppingList,
+             .buildShoppingListFromMealPlan:
             if let listID = resolvedShoppingListID() {
                 ShoppingListDetailView(listID: listID)
                     .toolbar { detailToolbar }
@@ -127,7 +134,8 @@ struct ActivityTagDetailView: View {
                 recordUnavailableView
             }
 
-        case .createPriceObservation, .updatePriceObservation:
+        case .createPriceObservation, .updatePriceObservation,
+             .confirmPriceObservation, .flagCommunityPrice:
             if let obs = firstID.flatMap({ id in store.priceObservations.first(where: { $0.id == id }) }) {
                 PriceObservationDetailView(observation: obs)
                     .toolbar { detailToolbar }
@@ -135,7 +143,7 @@ struct ActivityTagDetailView: View {
                 recordUnavailableView
             }
 
-        case .createMemory, .updateMemory:
+        case .createMemory, .updateMemory, .deleteMemory:
             if let memory = firstID.flatMap({ id in store.memories.first(where: { $0.id == id }) }) {
                 MemoryDetailView(memory: memory)
                     .toolbar { detailToolbar }
@@ -151,7 +159,8 @@ struct ActivityTagDetailView: View {
                 recordUnavailableView
             }
 
-        case .createProduct, .updateProduct:
+        case .createProduct, .updateProduct, .deleteProduct, .mergeProducts,
+             .addProductAlias, .removeProductAlias, .setProductBarcode:
             if let product = firstID.flatMap({ id in store.products.first(where: { $0.id == id }) }) {
                 let history = store.priceObservations.filter { $0.productID == product.id }
                 ProductDetailView(product: product, priceHistory: history)
@@ -161,8 +170,22 @@ struct ActivityTagDetailView: View {
             }
 
         default:
-            recordUnavailableView
+            if tag.undoSnapshot != nil {
+                undoOnlyView
+            } else {
+                recordUnavailableView
+            }
         }
+    }
+
+    private var undoOnlyView: some View {
+        ContentUnavailableView(
+            tag.actionType.displayName,
+            systemImage: tag.actionType.systemImage,
+            description: Text("Action applied successfully. Use Undo in the toolbar to reverse it.")
+        )
+        .navigationTitle(tag.actionType.displayName)
+        .toolbar { detailToolbar }
     }
 
     @ToolbarContentBuilder
@@ -178,6 +201,29 @@ struct ActivityTagDetailView: View {
                 }
             }
         }
+
+        ToolbarItem(placement: .primaryAction) {
+            Button {
+                navigateToActionDomain()
+            } label: {
+                Image(systemName: "arrow.up.forward.app")
+            }
+            .accessibilityLabel("Open related tab")
+        }
+    }
+
+    private func navigateToActionDomain() {
+        switch tag.actionType.domain {
+        case .shopping:
+            switchToShoppingTab()
+        case .prices, .stores:
+            switchToPricesTab()
+        case .meals:
+            switchToRecipesTab()
+        case .memory, .settings:
+            switchToSettingsTab()
+        }
+        dismiss()
     }
 
     private var recordUnavailableView: some View {
@@ -188,6 +234,37 @@ struct ActivityTagDetailView: View {
         )
         .navigationTitle(tag.actionType.displayName)
         .toolbar { detailToolbar }
+    }
+
+    private var undoConfirmationMessage: String {
+        guard let snapshot = tag.undoSnapshot else {
+            return "This removes the record created by this AI action from local app data."
+        }
+        switch snapshot {
+        case .deletedShoppingList, .deletedShoppingListItem, .deletedProduct, .deletedRecipe,
+             .deletedPriceObservation, .deletedStoreBranch, .deletedMatkasseBox,
+             .deletedMatkasseMeal, .deletedMemory:
+            return "This restores the deleted record."
+        case .createdShoppingList:
+            return "This removes the shopping list created by this action."
+        case .createdCommunityContribution:
+            return "This removes the community flag record created by this action."
+        case .createdInvitation:
+            return "This removes the invitation created by this action."
+        case .householdState:
+            return "This restores the previous household state."
+        case .productFields, .recipeFields, .shoppingListFields, .shoppingListStatusFields,
+             .shoppingListItemFields, .shoppingListItemState, .priceObservationFields,
+             .productMetadataFields, .storeBranchFields, .matkasseBoxFields,
+             .communityContributionFlag:
+            return "This restores the previous field values before the edit."
+        case .addedMealPlanSlot:
+            return "This removes the meal plan slot that was just added."
+        case .overwrittenMealPlanSlot:
+            return "This restores the meal plan slot that was overwritten."
+        case .clearedMealPlanSlot:
+            return "This restores the meal plan slot that was removed."
+        }
     }
 
     private func resolvedShoppingListID() -> UUID? {

@@ -2,17 +2,17 @@ import Foundation
 
 // MARK: - Proposed Action
 
-struct ProposedAction: Identifiable {
+struct ProposedAction: Identifiable, Codable {
     let id: UUID
     let type: ProposedActionType
-    let summary: String
-    let payload: ProposedActionPayload
+    var summary: String
+    var payload: ProposedActionPayload
     let riskLevel: RiskLevel
     let requiresConfirmation: Bool
     var validationResult: ValidationResult
     var status: ExecutionStatus
     var resultingRecordIDs: [UUID]
-    var undoInfo: UndoInfo?
+    var undoSnapshot: UndoSnapshot?
 
     init(
         id: UUID = UUID(),
@@ -36,7 +36,7 @@ struct ProposedAction: Identifiable {
 
 // MARK: - Action Types
 
-enum ProposedActionType: String {
+enum ProposedActionType: String, Codable {
     case createProduct, updateProduct, deleteProduct, mergeProducts
     case createPriceObservation, updatePriceObservation, deletePriceObservation
     case createShoppingList, updateShoppingList, deleteShoppingList
@@ -152,6 +152,34 @@ enum ProposedActionType: String {
          .deleteMatkasseBox, .removeMatkasseMeal].contains(self)
     }
 
+    var domain: ActionDomain {
+        switch self {
+        case .createProduct, .updateProduct, .deleteProduct, .mergeProducts,
+             .addProductAlias, .removeProductAlias, .setProductBarcode,
+             .createPriceObservation, .updatePriceObservation, .deletePriceObservation,
+             .confirmPriceObservation, .flagCommunityPrice:
+            return .prices
+        case .createShoppingList, .updateShoppingList, .deleteShoppingList,
+             .addShoppingListItem, .updateShoppingListItem, .completeShoppingListItem,
+             .removeShoppingListItem, .setShoppingListStatus, .optimizeShoppingList,
+             .moveShoppingListItem, .substituteShoppingListItem, .addRecipeToShoppingList,
+             .buildShoppingListFromMealPlan:
+            return .shopping
+        case .createRecipe, .updateRecipe, .deleteRecipe,
+             .setMealPlanSlot, .removeMealPlanSlot,
+             .createMatkasseBox, .updateMatkasseBox, .deleteMatkasseBox,
+             .addMatkasseMeal, .removeMatkasseMeal:
+            return .meals
+        case .createStore, .updateStore, .deleteStore, .enableStore, .disableStore:
+            return .stores
+        case .createMemory, .updateMemory, .deleteMemory:
+            return .memory
+        case .updateShoppingPreferences, .changeAppSetting,
+             .createHousehold, .inviteHouseholdMember, .updateHouseholdMember:
+            return .settings
+        }
+    }
+
     var expectsAffectedRecordIDs: Bool {
         switch self {
         case .setMealPlanSlot, .removeMealPlanSlot, .changeAppSetting:
@@ -164,7 +192,7 @@ enum ProposedActionType: String {
 
 // MARK: - Action Payload
 
-enum ProposedActionPayload {
+enum ProposedActionPayload: Codable {
     case createProduct(name: String, category: String?, unit: MeasurementUnit?)
     case updateProduct(existingName: String, newName: String?, category: String?, unit: MeasurementUnit?)
     case deleteProduct(name: String)
@@ -194,8 +222,13 @@ enum ProposedActionPayload {
     case deleteStore(storeName: String)
     case setStoreEnabled(storeName: String, isEnabled: Bool)
     case createMemory(summary: String, category: MemoryCategory, strength: ConstraintStrength, sensitivityLevel: SensitivityLevel)
+    case updateMemory(existingSummary: String, newSummary: String?, category: MemoryCategory?, strength: ConstraintStrength?, sensitivityLevel: SensitivityLevel?)
+    case deleteMemory(summary: String)
+    case createHousehold(name: String, ownerDisplayName: String?)
+    case inviteHouseholdMember(email: String?)
+    case updateHouseholdMember(userID: String, displayName: String?, role: HouseholdRole?)
     case changeAppSetting(key: String, value: String)
-    case createRecipe(title: String, servings: Int)
+    case createRecipe(title: String, servings: Int, ingredients: [RecipeIngredient])
     case updateRecipe(existingTitle: String, newTitle: String?, description: String?, servings: Int?)
     case deleteRecipe(title: String)
     case setMealPlanSlot(date: Date, mealType: String, recipeTitle: String?, freeformText: String?, isEatingOut: Bool, isLeftover: Bool)
@@ -211,7 +244,7 @@ enum ProposedActionPayload {
 
 // MARK: - Supporting Types
 
-enum RiskLevel {
+enum RiskLevel: Codable {
     case low, medium, high
 
     var displayName: String {
@@ -223,7 +256,27 @@ enum RiskLevel {
     }
 }
 
-enum ExecutionStatus: Equatable {
+enum ActionDomain: String, Hashable, Codable {
+    case shopping = "Shopping"
+    case prices = "Prices"
+    case meals = "Meals"
+    case stores = "Stores"
+    case memory = "Memory"
+    case settings = "Settings"
+
+    var systemImage: String {
+        switch self {
+        case .shopping: return "cart.fill"
+        case .prices: return "tag.fill"
+        case .meals: return "fork.knife"
+        case .stores: return "storefront.fill"
+        case .memory: return "brain.head.profile"
+        case .settings: return "gearshape.fill"
+        }
+    }
+}
+
+enum ExecutionStatus: Equatable, Codable {
     case pending, approved, rejected, executing, completed, failed
 
     var isTerminal: Bool {
@@ -234,7 +287,7 @@ enum ExecutionStatus: Equatable {
     }
 }
 
-enum ValidationResult {
+enum ValidationResult: Codable {
     case valid
     case invalid(reason: String)
     case warning(message: String)
@@ -257,19 +310,97 @@ enum ValidationResult {
     }
 }
 
-struct UndoInfo {
-    let description: String
+// MARK: - Undo Snapshot
+
+/// Before-state captured just before an update or delete executes.
+/// Stored in ActivityTag so undoActivityTag can reverse the change.
+enum UndoSnapshot: Codable {
+    // Field-level snapshots for update actions
+    case productFields(id: UUID, name: String, category: String?, unit: MeasurementUnit?)
+    case recipeFields(id: UUID, title: String, description: String?, servings: Int)
+    case shoppingListFields(id: UUID, name: String, plannedDate: Date?)
+    case shoppingListStatusFields(id: UUID, status: ListStatus, completedAt: Date?, archivedAt: Date?)
+    case shoppingListItemFields(listID: UUID, itemID: UUID, quantity: String, notes: String?)
+    case shoppingListItemState(listID: UUID, item: ShoppingListItem)
+    case priceObservationFields(id: UUID, price: Decimal, quantity: Double?, unit: MeasurementUnit?)
+    case productMetadataFields(id: UUID, aliases: [String], barcode: String?)
+    case storeBranchFields(id: UUID, chainName: String, branchName: String, address: String?, isEnabled: Bool)
+    case matkasseBoxFields(id: UUID, provider: String, deliveryWeekStartDate: Date, numberOfMeals: Int, servingsPerMeal: Int, price: Decimal?, notes: String?)
+    case communityContributionFlag(id: UUID, wasFlagged: Bool)
+    // Full record snapshots for delete/remove actions
+    case deletedShoppingList(ShoppingList)
+    case createdShoppingList(id: UUID)
+    case deletedShoppingListItem(listID: UUID, item: ShoppingListItem)
+    case deletedProduct(Product)
+    case deletedRecipe(Recipe)
+    case deletedPriceObservation(PriceObservation)
+    case createdCommunityContribution(id: UUID)
+    case deletedStoreBranch(StoreBranch)
+    case deletedMatkasseBox(MatkasseBox)
+    case deletedMatkasseMeal(boxID: UUID, meal: MatkasseMeal)
+    case deletedMemory(AIMemory)
+    case householdState(household: Household?, invitations: [Invitation])
+    case createdInvitation(id: UUID)
+    // Meal plan snapshots
+    case addedMealPlanSlot(date: Date, mealType: MealType)
+    case overwrittenMealPlanSlot(slot: MealPlanSlot)
+    case clearedMealPlanSlot(slot: MealPlanSlot)
+}
+
+// MARK: - Execution Result
+
+struct ActionExecutionResult {
     let affectedRecordIDs: [UUID]
+    let undoSnapshot: UndoSnapshot?
+
+    init(ids: [UUID], undo: UndoSnapshot? = nil) {
+        self.affectedRecordIDs = ids
+        self.undoSnapshot = undo
+    }
+
+    static let empty = ActionExecutionResult(ids: [])
+}
+
+// MARK: - Execution Plan
+
+struct ActionExecutionPlan {
+    enum DependencyMode {
+        case independent
+        case allOrNothing
+    }
+    var actions: [ProposedAction]
+    let mode: DependencyMode
+
+    init(actions: [ProposedAction], mode: DependencyMode = .independent) {
+        self.actions = actions
+        self.mode = mode
+    }
+}
+
+struct ActionPlanResult {
+    struct ActionOutcome {
+        let actionID: UUID
+        let affectedRecordIDs: [UUID]
+        let undoSnapshot: UndoSnapshot?
+        let failureReason: String?
+        let skippedReason: String?
+        var succeeded: Bool { failureReason == nil && skippedReason == nil }
+    }
+    let outcomes: [ActionOutcome]
+    var allSucceeded: Bool { outcomes.allSatisfy(\.succeeded) }
+    var anyFailed: Bool { outcomes.contains { $0.failureReason != nil } }
+    var anySkipped: Bool { outcomes.contains { $0.skippedReason != nil } }
 }
 
 // MARK: - Activity Tag
 
-struct ActivityTag: Identifiable {
+struct ActivityTag: Identifiable, Codable {
     let id: UUID
     let actionType: ProposedActionType
     let summary: String
     let timestamp: Date
     let affectedRecordIDs: [UUID]
+    let undoSnapshot: UndoSnapshot?
 
     init(id: UUID = UUID(), from action: ProposedAction) {
         self.id = id
@@ -277,13 +408,15 @@ struct ActivityTag: Identifiable {
         self.summary = action.summary
         self.timestamp = Date()
         self.affectedRecordIDs = action.resultingRecordIDs
+        self.undoSnapshot = action.undoSnapshot
     }
 
-    init(id: UUID, actionType: ProposedActionType, summary: String, timestamp: Date, affectedRecordIDs: [UUID]) {
+    init(id: UUID, actionType: ProposedActionType, summary: String, timestamp: Date, affectedRecordIDs: [UUID], undoSnapshot: UndoSnapshot? = nil) {
         self.id = id
         self.actionType = actionType
         self.summary = summary
         self.timestamp = timestamp
         self.affectedRecordIDs = affectedRecordIDs
+        self.undoSnapshot = undoSnapshot
     }
 }

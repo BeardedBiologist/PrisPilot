@@ -40,6 +40,9 @@ struct RootTabView: View {
                 .environment(\.floatingTabBarVisible, isTabBarVisible)
                 .environment(\.switchToChatTab) { selectTab(.chat) }
                 .environment(\.switchToSettingsTab) { selectTab(.profile) }
+                .environment(\.switchToShoppingTab) { selectTab(.shopping) }
+                .environment(\.switchToPricesTab) { selectTab(.prices) }
+                .environment(\.switchToRecipesTab) { selectTab(.recipes) }
                 .environment(\.setTabBarVisible) { visible in
                     guard isTabBarVisible != visible else { return }
                     withAnimation(GlassTheme.motionSpring) {

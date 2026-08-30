@@ -47,8 +47,12 @@ class ChatViewModel {
         guard !text.isEmpty, !isSending else { return }
 
         let sessionID = appStore.ensureDefaultChatSession()
+        let pendingClarification = appStore.pendingClarification(for: sessionID)
         inputText = ""
         appStore.appendMessage(ChatMessage(role: .user, content: .text(text)), to: sessionID)
+        if pendingClarification != nil {
+            appStore.setPendingClarification(nil, for: sessionID)
+        }
 
         if appStore.isAIOnboardingActive(for: sessionID) {
             handleAIOnboardingAnswer(text, in: sessionID)
@@ -235,6 +239,24 @@ class ChatViewModel {
         appStore.replaceMessage(messageID, in: sessionID, with: .activityTags([]))
     }
 
+    func editAction(actionID: UUID, in messageID: UUID, newPayload: ProposedActionPayload, newSummary: String) {
+        guard let sessionID = appStore.selectedChatSessionID,
+              let message = appStore.messages(for: sessionID).first(where: { $0.id == messageID }),
+              case .proposedActions(let intro, var actions, let memoryProposals) = message.content,
+              let actIdx = actions.firstIndex(where: { $0.id == actionID })
+        else { return }
+
+        actions[actIdx].payload = newPayload
+        actions[actIdx].summary = newSummary
+        actions[actIdx].validationResult = appStore.validate(actions[actIdx])
+
+        appStore.replaceMessage(
+            messageID,
+            in: sessionID,
+            with: .proposedActions(intro: intro, actions: actions, memoryProposals: memoryProposals)
+        )
+    }
+
     // MARK: - Private
 
     private func handleResponse(_ response: AIResponse, in sessionID: UUID) {
@@ -242,21 +264,49 @@ class ChatViewModel {
 
         switch plannedTurn {
         case .answer(let text), .refusal(let text):
-            appStore.appendMessage(ChatMessage(role: .assistant, content: .text(text)), to: sessionID)
+            appStore.setPendingClarification(nil, for: sessionID)
+            appStore.appendMessage(
+                ChatMessage(role: .assistant, content: .text(text), trace: response.trace),
+                to: sessionID
+            )
         case .clarification(let clarification):
-            appStore.appendMessage(ChatMessage(role: .assistant, content: .text(clarification.question)), to: sessionID)
+            appStore.setPendingClarification(
+                ChatPendingClarification(
+                    question: clarification.question,
+                    candidates: clarification.candidates,
+                    originalUserText: mostRecentUserText(in: sessionID)
+                ),
+                for: sessionID
+            )
+            appStore.appendMessage(
+                ChatMessage(role: .assistant, content: .text(clarification.question), trace: response.trace),
+                to: sessionID
+            )
         case .proposal(let intro, let actions, let memoryProposals):
+            appStore.setPendingClarification(nil, for: sessionID)
             appStore.appendMessage(ChatMessage(
                 role: .assistant,
                 content: .proposedActions(
                     intro: intro,
                     actions: actions,
                     memoryProposals: memoryProposals
-                )
+                ),
+                assumptions: response.assumptions,
+                trace: response.trace
             ), to: sessionID)
         case .failure(let error):
-            appStore.appendMessage(ChatMessage(role: .assistant, content: .error(error)), to: sessionID)
+            appStore.setPendingClarification(nil, for: sessionID)
+            appStore.appendMessage(ChatMessage(role: .assistant, content: .error(error), trace: response.trace), to: sessionID)
         }
+    }
+
+    private func mostRecentUserText(in sessionID: UUID) -> String? {
+        for message in appStore.messages(for: sessionID).reversed() {
+            if message.role == .user, case .text(let text) = message.content {
+                return text
+            }
+        }
+        return nil
     }
 
     private func collapseIfAllTerminal(messageID: UUID, sessionID: UUID) {
@@ -279,14 +329,15 @@ class ChatViewModel {
 
         action.status = .executing
         do {
-            let ids = try appStore.execute(action)
-            if ids.isEmpty && action.type.expectsAffectedRecordIDs {
+            let result = try appStore.execute(action)
+            if result.affectedRecordIDs.isEmpty && action.type.expectsAffectedRecordIDs {
                 action.validationResult = .invalid(reason: "No matching records were changed.")
                 action.status = .failed
                 return nil
             }
 
-            action.resultingRecordIDs = ids
+            action.resultingRecordIDs = result.affectedRecordIDs
+            action.undoSnapshot = result.undoSnapshot
             action.status = .completed
             return ActivityTag(from: action)
         } catch let error as AIServiceError {

@@ -55,13 +55,15 @@ enum AIScopePolicy {
 
     private static let blockedPhrases = [
         "write code", "write a function", "debug this", "code review", "leetcode", "unit test",
-        "solve this puzzle", "logic puzzle", "write an essay", "write a poem", "tell me a joke",
+        "solve this puzzle", "logic puzzle", "solve this calculus", "calculus problem", "math homework",
+        "write an essay", "write a poem", "tell me a joke",
         "translate this", "summarize this", "stock market", "investment advice", "legal advice"
     ]
 
     private static let blockedTerms: Set<String> = [
         "code", "coding", "program", "programming", "python", "javascript", "typescript", "swift", "xcode",
-        "html", "css", "sql", "regex", "algorithm", "homework", "essay", "poem", "joke", "riddle",
+        "html", "css", "sql", "regex", "algorithm", "homework", "calculus", "algebra", "geometry",
+        "essay", "poem", "joke", "riddle",
         "history", "politics", "weather", "news", "celebrity", "movie", "movies", "game", "games",
         "stocks", "crypto", "bitcoin", "investment", "lawyer", "lawsuit"
     ]
